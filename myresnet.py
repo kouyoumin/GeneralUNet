@@ -3,7 +3,11 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 from torchvision.models.resnet import ResNet, BasicBlock, Bottleneck, model_urls
-from torchvision.models.utils import load_state_dict_from_url
+from packaging import version
+if version.parse(torch.__version__) < version.parse('1.10.0'):
+    from torchvision.models.utils import load_state_dict_from_url
+else:
+    from torchvision._internally_replaced_utils import load_state_dict_from_url
 from typing import Type, Any, Callable, Union, List, Tuple, Optional
 
 

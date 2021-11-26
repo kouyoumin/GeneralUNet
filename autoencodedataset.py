@@ -6,7 +6,6 @@ import re
 import fnmatch
 from pathlib import Path
 import numpy as np
-from transforms import RandomResizedCrop2D, InPainting, OutPainting, Painting, LocalPixelShuffling, RandomWindow, CompressOutOfWindow, RandomGamma, RandomHorizontalFlip, Normalize, Compose
 from torchvision import transforms
 import gc
 
@@ -40,11 +39,11 @@ def scan_for_files(root, recursive=False, ext=''):
                         print('File %d: %s' % (len(filelist), fullpath), end="\r")
                     gc.collect()
                     #print(filelist[-1])
-        print('\nFound %d files' % (len(filelist)))
+        print('(Recursively) Found %d files in %s' % (len(filelist), root))
         return filelist
     else:
         filelist = [os.path.join(root,f) for f in os.listdir(root) if (os.path.isfile(f) and f.lower().endswith(ext))]
-        print('Found %d files' % (len(filelist)))
+        print('Found %d files in %s' % (len(filelist), root))
         return filelist
 
 
@@ -122,6 +121,8 @@ class DicomDataset(Dataset):
             self._validate_dicom_files(remove=True)
             self._calculate_mean_std()
             self._save()
+        #self.imgfiles = scan_for_files(root, recursive=recursive, ext=ext)
+        #self._validate_dicom_files(remove=True, remove_file=True)
     
     def __getitem__(self, idx):
         return self._acquire_data(self.imgfiles[idx])
@@ -129,7 +130,7 @@ class DicomDataset(Dataset):
     def __len__(self):
         return len(self.imgfiles)
 
-    def _validate_dicom_files(self, remove=True):
+    def _validate_dicom_files(self, remove=True, remove_file=False):
         items_to_remove = []
         for idx, path in enumerate(self.imgfiles):
             try:
@@ -139,7 +140,9 @@ class DicomDataset(Dataset):
                 ww = dcm.WindowWidth
                 pix = dcm.pixel_array
                 assert(pix.ndim == 2)
-                assert(pix.size > 1400 * 1200)
+                assert(pix.size > 3000 * 2000)
+                #if pix.shape[0] > 4000 or pix.shape[1] > 4000:
+                #    print('Large image (%dx%d): %s' % (pix.shape[0], pix.shape[1], path))
             except:
                 items_to_remove.append(idx)
         if len(items_to_remove):
@@ -147,6 +150,9 @@ class DicomDataset(Dataset):
             if remove:
                 items_to_remove = sorted(items_to_remove, reverse=True)
                 for idx in items_to_remove:
+                    if remove_file and not self.imgfiles[idx].endswith('pickle'):
+                        print('Deleting file', self.imgfiles[idx])
+                        os.remove(self.imgfiles[idx])
                     del self.imgfiles[idx]
     
     def _acquire_data(self, filename, clip=False):
@@ -257,13 +263,16 @@ class DicomDataset(Dataset):
 if __name__ == '__main__':
     import sys
     import cv2
-    dataset = DicomDataset(sys.argv[1], recursive=False)
+    from transforms import RandomResizedCrop2D, InPainting, OutPainting, Painting, LocalPixelShuffling, RandomWindow, CompressOutOfWindow, RandomGamma, RandomHorizontalFlip, Normalize, Compose
+    
+    dataset = DicomDataset(sys.argv[1], recursive=False, ext='')
     print(dataset[0].clip(0,1).mean(), dataset[0].clip(0,1).std())
     pdataset = PatchDataset2D(dataset, 256/1120, 256/896, 0.5)
-    aedataset = AutoEncodeDataset(dataset, Compose([RandomResizedCrop2D(256), RandomHorizontalFlip()]), Compose([LocalPixelShuffling(), Painting(), RandomWindow(), CompressOutOfWindow(), RandomGamma(), Normalize(0.5, 1)]), Compose([CompressOutOfWindow()]))
+    aedataset = AutoEncodeDataset(dataset, Compose([RandomResizedCrop2D(256), RandomHorizontalFlip()]), Compose([LocalPixelShuffling(), Painting(fill_mode='average'), RandomWindow(), CompressOutOfWindow(), RandomGamma(), Normalize(dataset.mean, dataset.std)]), Compose([CompressOutOfWindow()]))
     for entry in aedataset:
         input, target = entry
         print(input.shape, input.min(), input.max())
         print(target.shape, target.min(), target.max())
-        cv2.imwrite('input.png', ((input.numpy()+0.5).clip(0,1)*255).astype(np.uint8)[0])
+        cv2.imwrite('input.png', (((input.numpy()+dataset.mean)*dataset.std).clip(0,1)*255).astype(np.uint8)[0])
         cv2.imwrite('target.png', ((target.numpy()).clip(0,1)*255).astype(np.uint8)[0])
+    

@@ -4,6 +4,29 @@ from torchvision.transforms import functional as F
 from torchvision.transforms.functional import InterpolationMode
 import random
 import numpy as np
+import cv2
+
+
+class HalfResolution(torch.nn.Module):
+    def __init__(self, p=0.5, random_state=None):
+        super(RandomWindow, self).__init__()
+        self.p = p
+        self.random_state = random_state if random_state is not None else random
+
+    def __call__(self, image):
+        if self.random_state.random() > self.p:
+            return image
+
+        if isinstance(image, torch.Tensor):
+            #interpolation = self.random_state.choice(list(InterpolationMode))
+            interpolation = self.random_state.choice([InterpolationMode.NEAREST, InterpolationMode.BILINEAR, InterpolationMode.BICUBIC])
+            out = F.resize(image, [image.shape[-2]//2, image.shape[-1]//2], interpolation)
+            out = F.resize(out, [image.shape[-2], image.shape[-1]], InterpolationMode.NEAREST)
+        else:
+            interpolation = self.random_state.choice([cv2.INTER_AREA, cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC])
+            out = cv2.resize(image[0] if image.ndim == 3 else image, [image.shape[-1]//2, image.shape[-2]//2], interpolation = interpolation)
+            out = cv2.resize(out, [image.shape[-1], image.shape[-2]], interpolation = interpolation)
+        return out
 
 
 class RandomWindow(torch.nn.Module):
@@ -62,7 +85,7 @@ class RandomGamma(torch.nn.Module):
 
 
 class LocalPixelShuffling(torch.nn.Module):
-    def __init__(self, prob=0.5, max_block_size=16, loop=1000, random_state=None):
+    def __init__(self, prob=0.5, max_block_size=8, loop=1000, random_state=None):
         super(LocalPixelShuffling, self).__init__()
         self.prob = prob
         self.max_block_size = max_block_size
@@ -108,9 +131,11 @@ class LocalPixelShuffling(torch.nn.Module):
 
 
 class InPainting(torch.nn.Module):
-    def __init__(self, prob=0.95, random_state=None):
+    def __init__(self, prob=0.95, fill_mode='noise', max_blocksize=16, random_state=None):
         super(InPainting, self).__init__()
         self.prob = prob
+        self.fill_mode = fill_mode
+        self.max_blocksize = max_blocksize
         self.random_state = random_state if random_state is not None else random
     
     def __call__(self, image):
@@ -119,23 +144,42 @@ class InPainting(torch.nn.Module):
         else:
             new_img = image.copy()
 
-        count = 5
+        if self.fill_mode == 'random':
+            fill_mode = self.random_state.choice(['noise', 'average', 'zero'])
+        else:
+            fill_mode = self.fill_mode
+        
+        count = 6
         while count > 0 and self.random_state.random() < 0.95:
             window_sizes = [image.shape[0]]
             #window_positions = []
             slices = [slice(None)]
             for d in range(image.ndim-1):
-                window_size = (self.random_state.randint(image.shape[d+1]//8, image.shape[d+1]//4))
+                window_size = (self.random_state.randint(self.max_blocksize/2, self.max_blocksize))
                 window_position = (self.random_state.randint(3, image.shape[d+1] - window_size))
                 #print(window_position, window_position + window_size)
                 window_sizes.append(window_size)
                 slices.append(slice(window_position, window_position + window_size))
                 
             #print(slices, window_sizes)
-            if isinstance(new_img, torch.Tensor):
-                new_img[slices] = torch.rand(*window_sizes)
-            else:
-                new_img[tuple(slices)] = np.random.rand(*window_sizes)
+            if fill_mode == 'noise':
+                if isinstance(new_img, torch.Tensor):
+                    new_img[slices] = torch.rand(*window_sizes)
+                else:
+                    if isinstance(self.random_state, np.random.RandomState):
+                        new_img[tuple(slices)] = self.random_state.rand(*window_sizes)
+                    else:
+                        new_img[tuple(slices)] = np.random.rand(*window_sizes)
+            if fill_mode == 'zero':
+                if isinstance(new_img, torch.Tensor):
+                    new_img[slices] = 0.0
+                else:
+                    if isinstance(self.random_state, np.random.RandomState):
+                        new_img[tuple(slices)] = 0.0
+                    else:
+                        new_img[tuple(slices)] = 0.0
+            elif fill_mode == 'average':
+                new_img[slices] = new_img[slices].mean()
             
             count -= 1
         
@@ -143,27 +187,46 @@ class InPainting(torch.nn.Module):
 
 
 class OutPainting(torch.nn.Module):
-    def __init__(self, prob=0.95, random_state=None):
+    def __init__(self, prob=0.95, fill_mode='noise', random_state=None):
         super(OutPainting, self).__init__()
         self.prob = prob
+        self.fill_mode = fill_mode
         self.random_state = random_state if random_state is not None else random
     
     def __call__(self, image):
-        if isinstance(image, torch.Tensor):
-            new_img = torch.rand(image.shape)
+        if self.fill_mode == 'random':
+            fill_mode = self.random_state.choice(['noise', 'average', 'zero'])
         else:
-            if isinstance(self.random_state, np.random.RandomState):
-                new_img = self.random_state.rand(*image.shape)
+            fill_mode = self.fill_mode
+        
+        if fill_mode == 'noise':
+            if isinstance(image, torch.Tensor):
+                new_img = torch.rand(image.shape)
             else:
-                new_img = np.random.rand(*image.shape)
+                if isinstance(self.random_state, np.random.RandomState):
+                    new_img = self.random_state.rand(*image.shape, dtype=np.float32)
+                else:
+                    new_img = np.random.rand(*image.shape, dtype=np.float32)
+        elif fill_mode == 'average':
+            if isinstance(image, torch.Tensor):
+                new_img = torch.full(image.shape, image.mean(), dtype=torch.float32)
+            else:
+                new_img = np.full(image.shape, image.mean(), dtype=np.float32)
+        elif fill_mode == 'zero':
+            if isinstance(image, torch.Tensor):
+                new_img = torch.zeros(image.shape, dtype=torch.float32)
+            else:
+                new_img = np.zeros(image.shape, dtype=np.float32)
+        else:
+            raise NotImplementedError
 
-        count = 6
-        while count > 0 and self.random_state.random() < 0.95:
+        count = 10
+        while count > 0:# and self.random_state.random() < 0.95:
             window_sizes = [image.shape[0]]
             #window_positions = []
             slices = [slice(None)]
             for d in range(image.ndim-1):
-                window_size = (self.random_state.randint(3*image.shape[d+1]//7, 4*image.shape[d+1]//7))
+                window_size = (self.random_state.randint(3*image.shape[d+1]//7, 5*image.shape[d+1]//7))
                 window_position = (self.random_state.randint(3, image.shape[d+1] - window_size - 3))
                 #print(window_position, window_position + window_size)
                 window_sizes.append(window_size)
@@ -177,11 +240,11 @@ class OutPainting(torch.nn.Module):
 
 
 class Painting(torch.nn.Module):
-    def __init__(self, inpainting_prob=0.5, random_state=None):
+    def __init__(self, inpainting_prob=0.8, fill_mode='noise', random_state=None):
         super(Painting, self).__init__()
         self.inpainting_prob = inpainting_prob
-        self.inpainting = InPainting(random_state=random_state)
-        self.outpainting = OutPainting(random_state=random_state)
+        self.inpainting = InPainting(fill_mode=fill_mode, random_state=random_state)
+        self.outpainting = OutPainting(fill_mode=fill_mode, random_state=random_state)
         self.random_state = random_state if random_state is not None else random
     
     def __call__(self, image):

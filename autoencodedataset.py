@@ -6,6 +6,7 @@ import re
 import fnmatch
 from pathlib import Path
 import numpy as np
+import cv2
 from torchvision import transforms
 import gc
 
@@ -26,8 +27,14 @@ class AutoEncodeDataset(Dataset):
 
 
 def scan_for_files(root, recursive=False, ext=''):
-    if len(ext) > 0 and not ext.startswith('.'):
+    if isinstance(ext, str) and len(ext) > 0 and not ext.startswith('.'):
         ext = ('.'+ext).lower()
+    elif isinstance(ext, tuple):
+        extlist = []
+        for ex in ext:
+            if len(ex) > 0 and not ex.startswith('.'):
+                extlist.append(('.'+ex).lower())
+        ext = tuple(extlist)
     if recursive:
         filelist = []
         for curr_root, _, files in os.walk(root):
@@ -42,7 +49,7 @@ def scan_for_files(root, recursive=False, ext=''):
         print('(Recursively) Found %d files in %s' % (len(filelist), root))
         return filelist
     else:
-        filelist = [os.path.join(root,f) for f in os.listdir(root) if (os.path.isfile(f) and f.lower().endswith(ext))]
+        filelist = [os.path.join(root,f) for f in os.listdir(root) if (os.path.isfile(os.path.join(root,f)) and f.lower().endswith(ext))]
         print('Found %d files in %s' % (len(filelist), root))
         return filelist
 
@@ -110,58 +117,44 @@ class PatchDataset2D(Dataset):
         return len(self.entries)
 
 
-class DicomDataset(Dataset):
-    def __init__(self, root, recursive=False, ext='dcm', window_mode='none'):
+class ImageOnlyDataset(Dataset):
+    def __init__(self, root, recursive=False, ext=None):
         if isinstance(root, torch._six.string_classes):
             root = os.path.expanduser(root)
         
         self.root = root
         if not self._load():
             self.imgfiles = scan_for_files(root, recursive=recursive, ext=ext)
-            self._validate_dicom_files(remove=True)
+            self._validate_files(remove=True)
+            if len(self) < 1:
+                return
             self._calculate_mean_std()
             self._save()
-        #self.imgfiles = scan_for_files(root, recursive=recursive, ext=ext)
-        #self._validate_dicom_files(remove=True, remove_file=True)
     
     def __getitem__(self, idx):
         return self._acquire_data(self.imgfiles[idx])
     
     def __len__(self):
         return len(self.imgfiles)
-
-    def _validate_dicom_files(self, remove=True, remove_file=False):
+    
+    def _validate_files(self, remove=True, remove_file=False):
         items_to_remove = []
         for idx, path in enumerate(self.imgfiles):
+            #img = self._acquire_data(path)
             try:
-                print('Validating %d: %s' % (idx, path), end="\r")
-                dcm = pydicom.dcmread(path)
-                wc= dcm.WindowCenter
-                ww = dcm.WindowWidth
-                pix = dcm.pixel_array
-                assert(pix.ndim == 2)
-                assert(pix.size > 3000 * 2000)
-                #if pix.shape[0] > 4000 or pix.shape[1] > 4000:
-                #    print('Large image (%dx%d): %s' % (pix.shape[0], pix.shape[1], path))
+                img = self._acquire_data(path)
             except:
                 items_to_remove.append(idx)
         if len(items_to_remove):
-            print('\nItems cannot be opened by pydicom:', items_to_remove)
+            print('\nItems cannot be opened:', items_to_remove)
             if remove:
                 items_to_remove = sorted(items_to_remove, reverse=True)
                 for idx in items_to_remove:
+                    #print(idx, self.imgfiles[idx])
                     if remove_file and not self.imgfiles[idx].endswith('pickle'):
                         print('Deleting file', self.imgfiles[idx])
                         os.remove(self.imgfiles[idx])
                     del self.imgfiles[idx]
-    
-    def _acquire_data(self, filename, clip=False):
-        dcm = pydicom.dcmread(filename)
-        window_center = int(dcm.WindowCenter)
-        window_width = int(dcm.WindowWidth)
-        img = apply_window(dcm.pixel_array[np.newaxis, :, :], window_center, window_width, clip=clip)
-        return torch.Tensor(img)
-        #return img
     
     def _calculate_mean_std(self):
         fullset = np.empty((1,0))
@@ -260,19 +253,105 @@ class DicomDataset(Dataset):
         return True
 
 
+class DicomDataset(ImageOnlyDataset):
+    def __init__(self, root, recursive=False, ext='dcm'):
+        super(DicomDataset, self).__init__(root, recursive=recursive, ext=ext)
+        #self.imgfiles = scan_for_files(root, recursive=recursive, ext=ext)
+        #self._validate_dicom_files(remove=True, remove_file=True)
+
+    def _validate_files(self, remove=True, remove_file=False):
+        items_to_remove = []
+        for idx, path in enumerate(self.imgfiles):
+            try:
+                print('Validating %d: %s' % (idx, path), end="\r")
+                dcm = pydicom.dcmread(path)
+                wc= dcm.WindowCenter
+                ww = dcm.WindowWidth
+                pix = dcm.pixel_array
+                assert(pix.ndim == 2)
+                assert(pix.size > 3000 * 2000)
+                #if pix.shape[0] > 4000 or pix.shape[1] > 4000:
+                #    print('Large image (%dx%d): %s' % (pix.shape[0], pix.shape[1], path))
+            except:
+                items_to_remove.append(idx)
+        if len(items_to_remove):
+            print('\nItems cannot be opened by pydicom:', items_to_remove)
+            if remove:
+                items_to_remove = sorted(items_to_remove, reverse=True)
+                for idx in items_to_remove:
+                    if remove_file and not self.imgfiles[idx].endswith('pickle'):
+                        print('Deleting file', self.imgfiles[idx])
+                        os.remove(self.imgfiles[idx])
+                    del self.imgfiles[idx]
+    
+    def _acquire_data(self, filename, clip=False):
+        dcm = pydicom.dcmread(filename)
+        window_center = int(dcm.WindowCenter)
+        window_width = int(dcm.WindowWidth)
+        img = apply_window(dcm.pixel_array[np.newaxis, :, :], window_center, window_width, clip=clip)
+        return torch.Tensor(img)
+        #return img
+
+
+class JpegDataset(ImageOnlyDataset):
+    def __init__(self, root, recursive=False, ext=('jpg', 'jpeg'), grayscale=False):
+        self.grayscale = grayscale
+        super(JpegDataset, self).__init__(root, recursive=recursive, ext=ext)     
+    
+    def _acquire_data(self, filename, clip=False):
+        img = cv2.imread(filename, cv2.IMREAD_GRAYSCALE if self.grayscale else cv2.IMREAD_UNCHANGED)
+        if img.ndim == 2:
+            img = img[np.newaxis, :, :]
+        else:
+            #print(filename, img.shape)
+            img = img.transpose((2,0,1))
+        return torch.Tensor(img)/255.
+
+
+class PngDataset(ImageOnlyDataset):
+    def __init__(self, root, recursive=False, ext='png', grayscale=False):
+        self.grayscale = grayscale
+        super(PngDataset, self).__init__(root, recursive=recursive, ext=ext)
+    
+    def _acquire_data(self, filename, clip=False):
+        img = cv2.imread(filename, cv2.IMREAD_GRAYSCALE if self.grayscale else cv2.IMREAD_UNCHANGED)
+        if img.ndim == 2:
+            img = img[np.newaxis, :, :]
+        else:
+            #print(filename, img.shape)
+            img = img.transpose((2,0,1))
+        return torch.Tensor(img)/255.
+
+
 if __name__ == '__main__':
     import sys
     import cv2
     from transforms import RandomResizedCrop2D, InPainting, OutPainting, Painting, LocalPixelShuffling, RandomWindow, CompressOutOfWindow, RandomGamma, RandomHorizontalFlip, Normalize, Compose
     
-    dataset = DicomDataset(sys.argv[1], recursive=False, ext='')
-    print(dataset[0].clip(0,1).mean(), dataset[0].clip(0,1).std())
-    pdataset = PatchDataset2D(dataset, 256/1120, 256/896, 0.5)
-    aedataset = AutoEncodeDataset(dataset, Compose([RandomResizedCrop2D(256), RandomHorizontalFlip()]), Compose([LocalPixelShuffling(), Painting(fill_mode='average'), RandomWindow(), CompressOutOfWindow(), RandomGamma(), Normalize(dataset.mean, dataset.std)]), Compose([CompressOutOfWindow()]))
-    for entry in aedataset:
-        input, target = entry
-        print(input.shape, input.min(), input.max())
-        print(target.shape, target.min(), target.max())
-        cv2.imwrite('input.png', (((input.numpy()+dataset.mean)*dataset.std).clip(0,1)*255).astype(np.uint8)[0])
-        cv2.imwrite('target.png', ((target.numpy()).clip(0,1)*255).astype(np.uint8)[0])
+    #dataset = DicomDataset(sys.argv[1], recursive=False, ext='')
+    #dataset = JpegDataset(sys.argv[1], recursive=False)
+    dataset = PngDataset(sys.argv[1], recursive=False)
+    #print(dataset[0].clip(0,1).mean(), dataset[0].clip(0,1).std())
+    #pdataset = PatchDataset2D(dataset, 256/1120, 256/896, 0.5)
+    general_transforms = Compose([RandomResizedCrop2D(256), RandomHorizontalFlip()])
+    input_transforms = Compose([LocalPixelShuffling(), Painting(fill_mode='random'), RandomWindow(), CompressOutOfWindow(), RandomGamma(), Normalize(dataset.mean, dataset.std)])
+    #input_transforms = Compose([])
+    #target_transforms = Compose([CompressOutOfWindow()])
+    target_transforms = Compose([])
+    aedataset = AutoEncodeDataset(dataset, general_transforms, input_transforms, target_transforms)
+    
+    for i in range(10):
+        index = np.random.randint(0, len(aedataset))
+        input, target = aedataset[index]
+        print('Input:', input.shape, input.min(), input.max())
+        print('Target:', target.shape, target.min(), target.max())
+        cv2.imwrite(str(i)+'_input.png', ((input.numpy()*dataset.std+dataset.mean).clip(0,1)*255).astype(np.uint8)[0])
+        #cv2.imwrite(str(i)+'_input.png', ((input.numpy()).clip(0,1)*255).astype(np.uint8)[0])
+        cv2.imwrite(str(i)+'_target.png', ((target.numpy()).clip(0,1)*255).astype(np.uint8)[0])
+    #for entry in aedataset:
+    #    input, target = entry
+    #    print(input.shape, input.min(), input.max())
+    #    print(target.shape, target.min(), target.max())
+    #    cv2.imwrite('input.png', (((input.numpy()+dataset.mean)*dataset.std).clip(0,1)*255).astype(np.uint8)[0])
+    #    cv2.imwrite('target.png', ((target.numpy()).clip(0,1)*255).astype(np.uint8)[0])
     

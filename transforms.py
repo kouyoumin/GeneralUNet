@@ -8,8 +8,8 @@ import cv2
 
 
 class HalfResolution(torch.nn.Module):
-    def __init__(self, p=0.5, random_state=None):
-        super(RandomWindow, self).__init__()
+    def __init__(self, p=0.1, random_state=None):
+        super(HalfResolution, self).__init__()
         self.p = p
         self.random_state = random_state if random_state is not None else random
 
@@ -77,7 +77,7 @@ class RandomGamma(torch.nn.Module):
         self.random_state = random_state if random_state is not None else random
 
     def __call__(self, image):
-        gamma = self.random_state.uniform(0.66, 1.5)
+        gamma = self.random_state.uniform(2./3, 3./2)
         if self.random_state.random() < 0.5:
             gamma = 1 / gamma
         
@@ -131,7 +131,7 @@ class LocalPixelShuffling(torch.nn.Module):
 
 
 class InPainting(torch.nn.Module):
-    def __init__(self, prob=0.95, fill_mode='noise', max_blocksize=16, random_state=None):
+    def __init__(self, prob=0.95, fill_mode='noise', max_blocksize=64, random_state=None):
         super(InPainting, self).__init__()
         self.prob = prob
         self.fill_mode = fill_mode
@@ -149,7 +149,7 @@ class InPainting(torch.nn.Module):
         else:
             fill_mode = self.fill_mode
         
-        count = 6
+        count = 4
         while count > 0 and self.random_state.random() < 0.95:
             window_sizes = [image.shape[0]]
             #window_positions = []
@@ -220,13 +220,13 @@ class OutPainting(torch.nn.Module):
         else:
             raise NotImplementedError
 
-        count = 10
+        count = 8
         while count > 0:# and self.random_state.random() < 0.95:
             window_sizes = [image.shape[0]]
             #window_positions = []
             slices = [slice(None)]
             for d in range(image.ndim-1):
-                window_size = (self.random_state.randint(3*image.shape[d+1]//7, 5*image.shape[d+1]//7))
+                window_size = (self.random_state.randint(2*image.shape[d+1]//4, 3*image.shape[d+1]//4))
                 window_position = (self.random_state.randint(3, image.shape[d+1] - window_size - 3))
                 #print(window_position, window_position + window_size)
                 window_sizes.append(window_size)

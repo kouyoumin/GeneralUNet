@@ -165,6 +165,10 @@ class UnetWithBackbone(nn.Module):
     def _get_channel_scale_info(self):
         ch_list = []
         sc_list = []
+        
+        training_state = self.training
+        self.eval()
+        
         with torch.no_grad():
             for p in self.body.parameters():
                 dummy = torch.zeros((1,p.shape[1],128,128))
@@ -180,6 +184,10 @@ class UnetWithBackbone(nn.Module):
                 if idx > 0:
                     sc_list.append(feats[idx].shape[2]//feats[idx-1].shape[2])
             sc_list.append(128//feats[-1].shape[2])
+        
+        if training_state:
+            self.train()
+        
         return ch_list, sc_list  
     
     #@autocast

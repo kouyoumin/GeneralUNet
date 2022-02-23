@@ -41,12 +41,10 @@ class ExpansionBlock(nn.Module):
 
     #@autocast
     def forward(self, lowres_in, shortcut_in=None):
-        if self.shortcut_droprate > 0:
-            lowres_in = self.drop_func(lowres_in, p=self.droprate, training=self.training)
+        lowres_in = self.drop_func(lowres_in, p=self.droprate, training=self.training)
         out = self.bn0(self.scale0(lowres_in))
         if shortcut_in is not None:
-            if self.shortcut_droprate > 0:
-                shortcut_in = self.drop_func(shortcut_in, p=self.shortcut_droprate, training=self.training)
+            shortcut_in = self.drop_func(shortcut_in, p=self.shortcut_droprate, training=self.training)
             if out.shape[2:] != shortcut_in.shape[2:]:
                 out = F.interpolate(out, shortcut_in.size()[2:], mode='bilinear')
             if self.res:
@@ -85,18 +83,20 @@ class UnetDecoder(nn.Module):
         droprate = 0,
         shortcut_droprate = 0.5,
         drop_func = F.dropout,
+        no_shortcut = False,
         sigmoid = True
     ):
         super(UnetDecoder, self).__init__()
+        self.no_shortcut = no_shortcut
         self.blocks = nn.ModuleList()
         num_inputs = len(in_channels_list)
         for idx, in_channels in enumerate(in_channels_list):
             if in_channels == 0:
                 raise ValueError("in_channels=0 is currently not supported")
             if idx == 0:
-                block_module = ExpansionBlock(in_channels, in_channels_list[idx+1], in_channels_list[idx+1], scale=scale_list[idx], scaler=scaler, norm_layer=norm_layer, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, drop_func=drop_func)
+                block_module = ExpansionBlock(in_channels, 0 if no_shortcut else in_channels_list[idx+1], in_channels_list[idx+1], scale=scale_list[idx], scaler=scaler, norm_layer=norm_layer, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, drop_func=drop_func)
             elif idx < num_inputs - 1:
-                block_module = ExpansionBlock(in_channels, in_channels_list[idx+1], in_channels_list[idx+1], scale=scale_list[idx], scaler=scaler, norm_layer=norm_layer, res=res, droprate=0, shortcut_droprate=shortcut_droprate, drop_func=drop_func)
+                block_module = ExpansionBlock(in_channels, 0 if no_shortcut else in_channels_list[idx+1], in_channels_list[idx+1], scale=scale_list[idx], scaler=scaler, norm_layer=norm_layer, res=res, droprate=0, shortcut_droprate=shortcut_droprate, drop_func=drop_func)
             else:
                 block_module = ExpansionBlock(in_channels, 0, in_channels, scale=scale_list[idx], scaler=scaler, norm_layer=norm_layer, res=res, droprate=0, shortcut_droprate=shortcut_droprate, drop_func=drop_func)
             
@@ -117,7 +117,7 @@ class UnetDecoder(nn.Module):
         num_layers = len(self.blocks)
         x = list(x.values())[::-1]
         for idx in range(num_inputs - 1):
-            out = self.blocks[idx](x[idx], x[idx+1])
+            out = self.blocks[idx](x[idx], None if self.no_shortcut else x[idx+1])
             #print(idx)
         #print(idx)
         while idx < num_layers - 1:
@@ -146,7 +146,7 @@ class UnetWithBackbone(nn.Module):
     Attributes:
         out_channels (int): the number of channels in the FPN
     """
-    def __init__(self, backbone, return_layers, out_channels, scaler='upsample', res=False, droprate=0.5, shortcut_droprate=0.5, sigmoid=True, drop_func=F.dropout):
+    def __init__(self, backbone, return_layers, out_channels, scaler='upsample', res=False, droprate=0.5, shortcut_droprate=0.5, no_shortcut=False, sigmoid=True, drop_func=F.dropout):
         super(UnetWithBackbone, self).__init__()
 
         self.backbone = backbone
@@ -154,7 +154,7 @@ class UnetWithBackbone(nn.Module):
         in_channels_list, scale_list = self._get_channel_scale_info()
         print('in_channels_list', in_channels_list)
         print('scale_list', scale_list)
-        self.decoder = UnetDecoder(in_channels_list, scale_list, out_channels, scaler=scaler, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, sigmoid=sigmoid, drop_func=drop_func)
+        self.decoder = UnetDecoder(in_channels_list, scale_list, out_channels, scaler=scaler, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, no_shortcut=no_shortcut, sigmoid=sigmoid, drop_func=drop_func)
         '''self.fpn = FeaturePyramidNetwork(
             in_channels_list=in_channels_list,
             out_channels=out_channels,

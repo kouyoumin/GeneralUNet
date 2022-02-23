@@ -131,7 +131,7 @@ class LocalPixelShuffling(torch.nn.Module):
 
 
 class InPainting(torch.nn.Module):
-    def __init__(self, prob=0.95, fill_mode='noise', max_blocksize=64, random_state=None):
+    def __init__(self, prob=0.95, fill_mode='noise', max_blocksize=32, random_state=None):
         super(InPainting, self).__init__()
         self.prob = prob
         self.fill_mode = fill_mode
@@ -149,7 +149,7 @@ class InPainting(torch.nn.Module):
         else:
             fill_mode = self.fill_mode
         
-        count = 4
+        count = 16
         while count > 0 and self.random_state.random() < 0.95:
             window_sizes = [image.shape[0]]
             #window_positions = []

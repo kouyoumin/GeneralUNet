@@ -84,6 +84,7 @@ class UnetDecoder(nn.Module):
         shortcut_droprate = 0.5,
         drop_func = F.dropout,
         no_shortcut = False,
+        multiscale_out = False,
         sigmoid = True
     ):
         super(UnetDecoder, self).__init__()
@@ -116,14 +117,15 @@ class UnetDecoder(nn.Module):
         num_inputs = len(x)
         num_layers = len(self.blocks)
         x = list(x.values())[::-1]
+        out = x[0]
         for idx in range(num_inputs - 1):
-            out = self.blocks[idx](x[idx], None if self.no_shortcut else x[idx+1])
+            out = self.blocks[idx](out, None if self.no_shortcut else x[idx+1])
             #print(idx)
         #print(idx)
         while idx < num_layers - 1:
             idx += 1
             #print(idx)
-            out = self.blocks[idx](x[idx])
+            out = self.blocks[idx](out)
         out = self.outtran(out)
         return out
 

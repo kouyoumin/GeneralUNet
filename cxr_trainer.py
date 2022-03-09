@@ -42,13 +42,15 @@ def main(args):
     #valid_dataset = PatchDataset2D(valid_dcmdataset, 256/1120, 256/896, 0.5)
     
     train_general_transform = Compose([RandomResizedCrop2D(256, scale=(0.2, 1.0))])
-    train_input_transform = Compose([HalfResolution(), LocalPixelShuffling(max_block_size=4), Painting(inpainting_prob=0.6, fill_mode='zero')])
+    train_input_transform = Compose([HalfResolution(), LocalPixelShuffling(max_block_size=4), Painting(inpainting_prob=0.6, fill_mode='random')])
+    #train_input_transform = Compose([HalfResolution()])
     #train_input_transform = Compose([RandomWindow(), CompressOutOfWindow(), RandomGamma(), Normalize(dcmdataset.mean, dcmdataset.std)])
     train_target_transform = Compose([])
 
     rs = np.random.RandomState(0)
     valid_general_transform = Compose([Resize2D((256, 256))])
-    valid_input_transform = Compose([LocalPixelShuffling(random_state=rs), Painting(random_state=rs, fill_mode='zero')])
+    valid_input_transform = Compose([LocalPixelShuffling(random_state=rs), Painting(random_state=rs, fill_mode='noise')])
+    #valid_input_transform = None
     #valid_input_transform = Compose([RandomWindow(random_state=rs), CompressOutOfWindow(), RandomGamma(random_state=rs), Normalize(dcmdataset.mean, dcmdataset.std)])
     valid_target_transform = Compose([])
 
@@ -72,7 +74,7 @@ def main(args):
         return_layers = {'denseblock4':'denseblock4', 'transition3':'transition3', 'transition2':'transition2', 'transition1':'transition1', 'relu0':'relu0'}
     else:
         raise NotImplementedError
-    model = UnetWithBackbone(backbone, return_layers, num_classes, scaler='deconv', res=False, droprate=0.0, shortcut_droprate=0.5, drop_func=F.dropout2d if args.dropout2d else F.dropout, no_shortcut=False)
+    model = UnetWithBackbone(backbone, return_layers, num_classes, scaler='deconv', res=False, droprate=0., shortcut_droprate=0., drop_func=F.dropout2d if args.dropout2d else F.dropout, no_shortcut=False)
     print(model)
     model.to(device)
 
@@ -177,7 +179,8 @@ def main(args):
         train_loss = train_epoch(model, optimizer, lr_scheduler, train_data_loader, criterion_train, device, epoch, args.print_freq, chexpertdataset.mean, chexpertdataset.std, outdir)
         epoch_train_end_time = time.time()
 
-        valid_input_transform.transforms[0].random_state.seed(0)
+        if valid_input_transform:
+            valid_input_transform.transforms[0].random_state.seed(0)
         valid_loss = evaluate(model, valid_data_loader, criterion_valid, device, epoch, args.print_freq/10, chexpertdataset.mean, chexpertdataset.std, outdir)
         epoch_valid_end_time = time.time()
         print('Training time: %fs, Validation time: %fs' % (int(epoch_train_end_time - epoch_start_time), int(epoch_valid_end_time - epoch_train_end_time)))
@@ -309,7 +312,7 @@ if __name__ == "__main__":
     parser.add_argument('--data-path', default='~/KVGH', help='dataset')
     parser.add_argument('--device', default='cuda', help='device')
     parser.add_argument("--model", default="densenet121", help="model")
-    parser.add_argument('-b', '--batch-size', default=128, type=int,
+    parser.add_argument('-b', '--batch-size', default=64, type=int,
                         help='images per gpu, the total batch size is $NGPU x batch_size')
     parser.add_argument('--epochs', default=100, type=int, metavar='N',
                         help='number of total epochs to run')

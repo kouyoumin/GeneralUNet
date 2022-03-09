@@ -19,8 +19,8 @@ class AutoEncodeDataset(Dataset):
         self.target_transform = target_transform
     
     def __getitem__(self, idx):
-        image = self.general_transform(self.data[idx])
-        return self.input_transform(image), self.target_transform(image)
+        image = self.general_transform(self.data[idx]) if self.general_transform else self.data[idx]
+        return self.input_transform(image) if self.input_transform else image, self.target_transform(image) if self.target_transform else image
     
     def __len__(self):
         return len(self.data)

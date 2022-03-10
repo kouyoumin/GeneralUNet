@@ -119,8 +119,14 @@ class LocalPixelShuffling(torch.nn.Module):
             for c in range(image.shape[0]):
                 window = orig_image[tuple([c]+slices)]
                 if isinstance(window, torch.Tensor):
-                    idx = torch.randperm(window.nelement())
-                    window = window.reshape(-1)[idx].reshape(window.size())
+                    if isinstance(self.random_state, np.random.RandomState):
+                        window = window.numpy()
+                        window = window.flatten()
+                        self.random_state.shuffle(window)
+                        window = window.reshape(tuple(window_sizes))
+                    else:
+                        idx = torch.randperm(window.nelement())
+                        window = window.reshape(-1)[idx].reshape(window.size())
                 else:
                     window = window.flatten()
                     self.random_state.shuffle(window)
@@ -164,7 +170,10 @@ class InPainting(torch.nn.Module):
             #print(slices, window_sizes)
             if fill_mode == 'noise':
                 if isinstance(new_img, torch.Tensor):
-                    new_img[slices] = torch.rand(*window_sizes)
+                    if isinstance(self.random_state, np.random.RandomState):
+                        new_img[slices] = torch.Tensor(self.random_state.rand(*window_sizes))#torch.rand(*window_sizes)
+                    else:
+                        new_img[slices] = torch.rand(*window_sizes)
                 else:
                     if isinstance(self.random_state, np.random.RandomState):
                         new_img[tuple(slices)] = self.random_state.rand(*window_sizes)
@@ -201,7 +210,10 @@ class OutPainting(torch.nn.Module):
         
         if fill_mode == 'noise':
             if isinstance(image, torch.Tensor):
-                new_img = torch.rand(image.shape)
+                if isinstance(self.random_state, np.random.RandomState):
+                    new_img = torch.Tensor(self.random_state.rand(*image.shape))#torch.rand(image.shape)
+                else:
+                    new_img = torch.rand(image.shape)
             else:
                 if isinstance(self.random_state, np.random.RandomState):
                     new_img = self.random_state.rand(*image.shape, dtype=np.float32)
@@ -323,7 +335,8 @@ class Compose(object):
 
 
 if __name__ == '__main__':
-    testt = Compose([RandomResizedCrop2D(64), Painting(), LocalPixelShuffling(), RandomWindow(), CompressOutOfWindow(), RandomGamma(), RandomHorizontalFlip(), Normalize(0.5, 1)])
+    random_state = np.random.RandomState(seed=0)
+    testt = Compose([Resize2D(64), LocalPixelShuffling(random_state=random_state), Painting(random_state=random_state), Normalize(0.5, 1)])
     #t = torch.Tensor([[0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]])
     t, _ = torch.sort(torch.rand((1,128,128)))
     tt = testt(t)
@@ -332,7 +345,10 @@ if __name__ == '__main__':
 
     #t = np.array([[0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]])
     #t = np.sort(np.random.rand(1,32,32))
+    testt.transforms[1].random_state.seed(0)
     ta = t.numpy()
-    tt = testt(ta)
+    tta = testt(ta)
     print(ta.shape)
-    print(tt.shape)
+    print(tta.shape)
+
+    np.testing.assert_allclose(tt.numpy(), tta)

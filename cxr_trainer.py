@@ -20,6 +20,7 @@ from autoencodedataset import PngDataset, JpegDataset, AutoEncodeDataset
 
 def main(args):
     print(args)
+    torch.backends.cudnn.benchmark = True
     outdir = time.strftime('%Y%m%d%H%M')
     if not os.path.isdir(outdir):
         os.makedirs(outdir)
@@ -312,7 +313,7 @@ if __name__ == "__main__":
     parser.add_argument('--data-path', default='~/KVGH', help='dataset')
     parser.add_argument('--device', default='cuda', help='device')
     parser.add_argument("--model", default="densenet121", help="model")
-    parser.add_argument('-b', '--batch-size', default=64, type=int,
+    parser.add_argument('-b', '--batch-size', default=96, type=int,
                         help='images per gpu, the total batch size is $NGPU x batch_size')
     parser.add_argument('--epochs', default=100, type=int, metavar='N',
                         help='number of total epochs to run')

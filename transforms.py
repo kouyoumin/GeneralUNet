@@ -120,10 +120,11 @@ class LocalPixelShuffling(torch.nn.Module):
                 window = orig_image[tuple([c]+slices)]
                 if isinstance(window, torch.Tensor):
                     if isinstance(self.random_state, np.random.RandomState):
-                        window = window.numpy()
-                        window = window.flatten()
-                        self.random_state.shuffle(window)
-                        window = window.reshape(tuple(window_sizes))
+                        window_np = window.numpy()
+                        window_np = window_np.flatten()
+                        self.random_state.shuffle(window_np)
+                        window_np = window_np.reshape(tuple(window_sizes))
+                        window = torch.Tensor(window_np)
                     else:
                         idx = torch.randperm(window.nelement())
                         window = window.reshape(-1)[idx].reshape(window.size())
@@ -336,15 +337,13 @@ class Compose(object):
 
 if __name__ == '__main__':
     random_state = np.random.RandomState(seed=0)
-    testt = Compose([Resize2D(64), LocalPixelShuffling(random_state=random_state), Painting(random_state=random_state), Normalize(0.5, 1)])
-    #t = torch.Tensor([[0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]])
+    testt = Compose([Resize2D(64), LocalPixelShuffling(prob=1.0, random_state=random_state), Painting(random_state=random_state), Normalize(0.5, 1)])
+    
     t, _ = torch.sort(torch.rand((1,128,128)))
     tt = testt(t)
     print(t.shape)
     print(tt.shape)
 
-    #t = np.array([[0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]])
-    #t = np.sort(np.random.rand(1,32,32))
     testt.transforms[1].random_state.seed(0)
     ta = t.numpy()
     tta = testt(ta)

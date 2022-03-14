@@ -15,7 +15,7 @@ import re
 from myresnet import resnext50_32x4d_fe
 from myunet import UnetWithBackbone
 from transforms import HalfResolution, RandomResizedCrop2D, Resize2D, Painting, LocalPixelShuffling, RandomWindow, CompressOutOfWindow, RandomGamma, RandomHorizontalFlip, Normalize, Compose
-from autoencodedataset import PngDataset, JpegDataset, AutoEncodeDataset
+from autoencodedataset import PngDataset, JpegDataset, DicomDataset, AutoEncodeDataset
 
 
 def main(args):
@@ -36,7 +36,8 @@ def main(args):
     # use our dataset and defined transformations
     nihdataset = PngDataset('~/NIH_ChestXRay', recursive=True, grayscale=True)
     chexpertdataset = JpegDataset('~/CheXpert-v1.0', recursive=True, grayscale=True)
-    cxrdataset = torch.utils.data.ConcatDataset((nihdataset, chexpertdataset))
+    tmuhdataset = DicomDataset('~/InnoCare/20220216_hans', recursive=True)
+    cxrdataset = torch.utils.data.ConcatDataset((nihdataset, chexpertdataset, tmuhdataset))
     train_size = len(cxrdataset) - int(0.05*len(cxrdataset))
     valid_size = len(cxrdataset) - train_size
     train_dataset, valid_dataset = torch.utils.data.random_split(cxrdataset, [train_size, valid_size], generator=torch.Generator().manual_seed(0))
@@ -162,8 +163,8 @@ def main(args):
     criterion_bce = nn.BCELoss()
     #criterion_train = [ {'name':'L1', 'lossfunction': criterion_l1, 'weight': 0.6},
     #                    {'name':'MSE', 'lossfunction': criterion_mse, 'weight': 0.4}]
-    criterion_train = [ {'name':'L1', 'lossfunction': criterion_l1, 'weight': 0.8},
-                        {'name':'BCE', 'lossfunction': criterion_bce, 'weight': 0.2}]
+    criterion_train = [ {'name':'L1', 'lossfunction': criterion_l1, 'weight': 0.9},
+                        {'name':'BCE', 'lossfunction': criterion_bce, 'weight': 0.1}]
     criterion_valid = [ {'name':'L1', 'lossfunction': criterion_l1, 'weight': 1.0},
                         {'name':'MSE', 'lossfunction': criterion_mse, 'weight': 0.0}]
     

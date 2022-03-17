@@ -86,6 +86,7 @@ class UnetDecoder(nn.Module):
         drop_func = F.dropout,
         no_shortcut = False,
         multiscale_out = False,
+        relu = True,
         sigmoid = True
     ):
         super(UnetDecoder, self).__init__()
@@ -93,6 +94,10 @@ class UnetDecoder(nn.Module):
         self.multiscale_out = multiscale_out
         self.blocks = nn.ModuleList()
         self.outtrans = nn.ModuleList()
+        if relu:
+            self.relu = nn.ReLU()
+        else:
+            self.relu = nn.Identity()
         num_inputs = len(in_channels_list)
         for idx, in_channels in enumerate(in_channels_list):
             if in_channels == 0:
@@ -137,7 +142,7 @@ class UnetDecoder(nn.Module):
         for idx in range(num_layers):
             shortcut = x[idx+1] if idx < num_inputs - 1 and not self.no_shortcut else None
             #print(idx, shortcut.shape if shortcut is not None else 'None')
-            out = self.blocks[idx](x[0] if idx == 0 else out, shortcut)
+            out = self.blocks[idx](self.relu(x[0]) if idx == 0 else out, shortcut)
             if self.multiscale_out:
                 outs.append(self.outtrans[idx](out))
             elif idx == num_layers - 1:
@@ -164,7 +169,7 @@ class UnetWithBackbone(nn.Module):
     Attributes:
         out_channels (int): the number of channels in the FPN
     """
-    def __init__(self, backbone, return_layers, out_channels, scaler='upsample', res=False, droprate=0.5, shortcut_droprate=0.5, no_shortcut=False, sigmoid=True, classifier_out=False, multiscale_out=False, drop_func=F.dropout):
+    def __init__(self, backbone, return_layers, out_channels, scaler='upsample', res=False, droprate=0.5, shortcut_droprate=0.5, no_shortcut=False, relu=True, sigmoid=True, classifier_out=False, multiscale_out=False, drop_func=F.dropout):
         super(UnetWithBackbone, self).__init__()
 
         self.backbone = backbone
@@ -176,7 +181,7 @@ class UnetWithBackbone(nn.Module):
         print('scale_list', scale_list)
         if classifier_out:
             self.classifier = nn.Sequential(nn.ReLU(), nn.AdaptiveAvgPool2d((1,1)), nn.Flatten(), nn.Linear(in_channels_list[0], out_channels))
-        self.decoder = UnetDecoder(in_channels_list, scale_list, out_channels, scaler=scaler, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, no_shortcut=no_shortcut, multiscale_out=multiscale_out, sigmoid=sigmoid, drop_func=drop_func)
+        self.decoder = UnetDecoder(in_channels_list, scale_list, out_channels, scaler=scaler, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, no_shortcut=no_shortcut, multiscale_out=multiscale_out, relu=relu, sigmoid=sigmoid, drop_func=drop_func)
         '''self.fpn = FeaturePyramidNetwork(
             in_channels_list=in_channels_list,
             out_channels=out_channels,

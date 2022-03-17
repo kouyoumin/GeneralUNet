@@ -102,7 +102,7 @@ def main(args):
     elif args.lr_scheduler == 'cosineannealingwarmrestarts':
         main_lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, 40, eta_min=1e-6, verbose=True)
     elif args.lr_scheduler == 'onecyclelr':
-        main_lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, args.lr, steps_per_epoch=len(train_data_loader), epochs=args.epochs, pct_start=0.3, div_factor=25.0, verbose=False)
+        main_lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, args.lr, steps_per_epoch=len(train_data_loader), epochs=args.epochs, pct_start=0.2, div_factor=25.0, verbose=False)
     else:
         raise RuntimeError(
             f"Invalid lr scheduler '{args.lr_scheduler}'. Only StepLR, CosineAnnealingLR and ExponentialLR "
@@ -163,9 +163,11 @@ def main(args):
     criterion_bce = nn.BCELoss()
     #criterion_train = [ {'name':'L1', 'lossfunction': criterion_l1, 'weight': 0.6},
     #                    {'name':'MSE', 'lossfunction': criterion_mse, 'weight': 0.4}]
-    criterion_train = [ {'name':'L1', 'lossfunction': criterion_l1, 'weight': 0.9},
-                        {'name':'BCE', 'lossfunction': criterion_bce, 'weight': 0.1}]
+    criterion_train = [ {'name':'L1', 'lossfunction': criterion_l1, 'weight': 0.95},
+                        {'name':'BCE', 'lossfunction': criterion_bce, 'weight': 0.05},
+                        {'name':'MSE', 'lossfunction': criterion_mse, 'weight': 0.0}]
     criterion_valid = [ {'name':'L1', 'lossfunction': criterion_l1, 'weight': 1.0},
+                        {'name':'BCE', 'lossfunction': criterion_bce, 'weight': 0.0},
                         {'name':'MSE', 'lossfunction': criterion_mse, 'weight': 0.0}]
     
     print("Start training")

@@ -7,6 +7,19 @@ import numpy as np
 import cv2
 
 
+class Invert(torch.nn.Module):
+    def __init__(self, p=0.3, random_state=None):
+        super(Invert, self).__init__()
+        self.p = p
+        self.random_state = random_state if random_state is not None else random
+
+    def __call__(self, image):
+        if self.random_state.random() > self.p:
+            return image
+        else:
+            return 1-image
+
+
 class HalfResolution(torch.nn.Module):
     def __init__(self, p=0.1, random_state=None):
         super(HalfResolution, self).__init__()

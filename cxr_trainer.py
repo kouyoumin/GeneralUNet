@@ -14,7 +14,7 @@ import re
 
 from myresnet import resnext50_32x4d_fe
 from myunet import UnetWithBackbone
-from transforms import HalfResolution, RandomResizedCrop2D, Resize2D, Painting, LocalPixelShuffling, RandomWindow, CompressOutOfWindow, RandomGamma, RandomHorizontalFlip, Normalize, Compose
+from transforms import Invert, HalfResolution, RandomResizedCrop2D, Resize2D, Painting, LocalPixelShuffling, RandomWindow, CompressOutOfWindow, RandomGamma, RandomHorizontalFlip, Normalize, Compose
 from autoencodedataset import PngDataset, JpegDataset, DicomDataset, AutoEncodeDataset
 
 
@@ -44,7 +44,7 @@ def main(args):
     #valid_dataset = PatchDataset2D(valid_dcmdataset, 256/1120, 256/896, 0.5)
     
     train_general_transform = Compose([RandomResizedCrop2D(256, scale=(0.2, 1.0))])
-    train_input_transform = Compose([HalfResolution(), LocalPixelShuffling(max_block_size=4), Painting(inpainting_prob=0.6, fill_mode='random')])
+    train_input_transform = Compose([HalfResolution(), Invert(), LocalPixelShuffling(max_block_size=4), Painting(inpainting_prob=0.6, fill_mode='random')])
     #train_input_transform = Compose([HalfResolution()])
     #train_input_transform = Compose([RandomWindow(), CompressOutOfWindow(), RandomGamma(), Normalize(dcmdataset.mean, dcmdataset.std)])
     train_target_transform = Compose([])

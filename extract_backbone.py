@@ -9,6 +9,8 @@ def extract_backbone(state_dict):
     for key in state_dict:
         if key.startswith('backbone.'):
             new_dict[key[9:]] = state_dict[key]
+            print(key)
+            assert(torch.equal(new_dict[key[9:]], state_dict['body'+key[8:]]))
     
     for key in new_dict:
         print(key)

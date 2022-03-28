@@ -86,7 +86,7 @@ class UnetDecoder(nn.Module):
         drop_func = F.dropout,
         no_shortcut = False,
         multiscale_out = False,
-        relu = True,
+        add_activation = nn.Identity(),
         sigmoid = True
     ):
         super(UnetDecoder, self).__init__()
@@ -94,10 +94,7 @@ class UnetDecoder(nn.Module):
         self.multiscale_out = multiscale_out
         self.blocks = nn.ModuleList()
         self.outtrans = nn.ModuleList()
-        if relu:
-            self.relu = nn.ReLU()
-        else:
-            self.relu = nn.Identity()
+        self.act = add_activation
         num_inputs = len(in_channels_list)
         for idx, in_channels in enumerate(in_channels_list):
             if in_channels == 0:
@@ -140,9 +137,9 @@ class UnetDecoder(nn.Module):
             out = self.blocks[idx](out)'''
         outs = []
         for idx in range(num_layers):
-            shortcut = x[idx+1] if idx < num_inputs - 1 and not self.no_shortcut else None
+            shortcut = self.act(x[idx+1]) if idx < num_inputs - 1 and not self.no_shortcut else None
             #print(idx, shortcut.shape if shortcut is not None else 'None')
-            out = self.blocks[idx](self.relu(x[0]) if idx == 0 else out, shortcut)
+            out = self.blocks[idx](self.act(x[0]) if idx == 0 else out, shortcut)
             if self.multiscale_out:
                 outs.append(self.outtrans[idx](out))
             elif idx == num_layers - 1:
@@ -169,19 +166,19 @@ class UnetWithBackbone(nn.Module):
     Attributes:
         out_channels (int): the number of channels in the FPN
     """
-    def __init__(self, backbone, return_layers, out_channels, scaler='upsample', res=False, droprate=0.5, shortcut_droprate=0.5, no_shortcut=False, relu=True, sigmoid=True, classifier_out=False, multiscale_out=False, drop_func=F.dropout):
+    def __init__(self, backbone, return_layers, out_channels, scaler='upsample', res=False, droprate=0.5, shortcut_droprate=0.5, no_shortcut=False, add_activation=nn.Identity(), sigmoid=True, classifier_out=0, multiscale_out=False, drop_func=F.dropout):
         super(UnetWithBackbone, self).__init__()
 
-        self.backbone = backbone
-        self.body = IntermediateLayerGetter(self.backbone, return_layers=return_layers)
+        #self.backbone = backbone
+        self.body = IntermediateLayerGetter(backbone, return_layers=return_layers)
         self.classifier_out = classifier_out
         self.multiscale_out = multiscale_out
         in_channels_list, scale_list = self._get_channel_scale_info()
         print('in_channels_list', in_channels_list)
         print('scale_list', scale_list)
         if classifier_out:
-            self.classifier = nn.Sequential(nn.ReLU(), nn.AdaptiveAvgPool2d((1,1)), nn.Flatten(), nn.Linear(in_channels_list[0], out_channels))
-        self.decoder = UnetDecoder(in_channels_list, scale_list, out_channels, scaler=scaler, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, no_shortcut=no_shortcut, multiscale_out=multiscale_out, relu=relu, sigmoid=sigmoid, drop_func=drop_func)
+            self.classifier = nn.Sequential(add_activation, nn.AdaptiveAvgPool2d((1,1)), nn.Flatten(), nn.Linear(in_channels_list[0], classifier_out))
+        self.decoder = UnetDecoder(in_channels_list, scale_list, out_channels, scaler=scaler, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, no_shortcut=no_shortcut, multiscale_out=multiscale_out, add_activation=add_activation, sigmoid=sigmoid, drop_func=drop_func)
         '''self.fpn = FeaturePyramidNetwork(
             in_channels_list=in_channels_list,
             out_channels=out_channels,
@@ -234,7 +231,7 @@ if __name__ == '__main__':
 
     from torchvision.models.densenet import densenet121
     backbone = densenet121(pretrained=True)
-    model = UnetWithBackbone(backbone.features, {'denseblock4':'denseblock4', 'transition3':'transition3', 'transition2':'transition2', 'transition1':'transition1', 'relu0':'relu0'}, 1, res=False, classifier_out=True, multiscale_out=True)
+    model = UnetWithBackbone(backbone.features, {'norm5':'norm5', 'transition3':'transition3', 'transition2':'transition2', 'transition1':'transition1', 'relu0':'relu0'}, 1, res=False, classifier_out=True, multiscale_out=True)
     input = torch.rand((1,3,256,256))
     output = model(input)
     

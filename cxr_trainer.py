@@ -73,10 +73,10 @@ def main(args):
         return_layers = {'layer4':'layer4', 'layer3':'layer3', 'layer2':'layer2', 'layer1':'layer1', 'relu':'relu'}
     elif args.model == 'densenet121':
         backbone = backbone.features
-        return_layers = {'denseblock4':'denseblock4', 'transition3':'transition3', 'transition2':'transition2', 'transition1':'transition1', 'relu0':'relu0'}
+        return_layers = {'norm5':'norm5', 'transition3':'transition3', 'transition2':'transition2', 'transition1':'transition1', 'relu0':'relu0'}
     else:
         raise NotImplementedError
-    model = UnetWithBackbone(backbone, return_layers, num_classes, scaler='deconv', res=False, droprate=0., shortcut_droprate=0., drop_func=F.dropout2d if args.dropout2d else F.dropout, no_shortcut=False)
+    model = UnetWithBackbone(backbone, return_layers, num_classes, scaler='deconv', res=False, droprate=0., shortcut_droprate=0., drop_func=F.dropout2d if args.dropout2d else F.dropout, no_shortcut=False, add_activation = nn.ReLU())
     print(model)
     model.to(device)
 

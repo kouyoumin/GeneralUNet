@@ -166,7 +166,7 @@ class UnetWithBackbone(nn.Module):
     Attributes:
         out_channels (int): the number of channels in the FPN
     """
-    def __init__(self, backbone, return_layers, out_channels, scaler='upsample', res=False, droprate=0.5, shortcut_droprate=0.5, no_shortcut=False, add_activation=nn.Identity(), sigmoid=True, classifier_out=0, multiscale_out=False, drop_func=F.dropout):
+    def __init__(self, backbone, return_layers, out_channels, scaler='upsample', res=False, droprate=0.5, shortcut_droprate=0.5, cls_droprate=0.5, no_shortcut=False, add_activation=nn.Identity(), sigmoid=True, classifier_out=0, multiscale_out=False, drop_func=F.dropout):
         super(UnetWithBackbone, self).__init__()
 
         #self.backbone = backbone
@@ -177,7 +177,7 @@ class UnetWithBackbone(nn.Module):
         print('in_channels_list', in_channels_list)
         print('scale_list', scale_list)
         if classifier_out:
-            self.classifier = nn.Sequential(add_activation, nn.AdaptiveAvgPool2d((1,1)), nn.Flatten(), nn.Linear(in_channels_list[0], classifier_out))
+            self.classifier = nn.Sequential(add_activation, nn.AdaptiveAvgPool2d((1,1)), nn.Flatten(), nn.Dropout(p=cls_droprate), nn.Linear(in_channels_list[0], classifier_out))
         self.decoder = UnetDecoder(in_channels_list, scale_list, out_channels, scaler=scaler, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, no_shortcut=no_shortcut, multiscale_out=multiscale_out, add_activation=add_activation, sigmoid=sigmoid, drop_func=drop_func)
         '''self.fpn = FeaturePyramidNetwork(
             in_channels_list=in_channels_list,

@@ -43,7 +43,7 @@ def main(args):
     train_dataset, valid_dataset = torch.utils.data.random_split(cxrdataset, [train_size, valid_size], generator=torch.Generator().manual_seed(0))
     #valid_dataset = PatchDataset2D(valid_dcmdataset, 256/1120, 256/896, 0.5)
     
-    train_general_transform = Compose([RandomResizedCrop2D(256, scale=(0.2, 1.0))])
+    train_general_transform = Compose([RandomResizedCrop2D(256, scale=(0.2, 1.0)), RandomHorizontalFlip()])
     train_input_transform = Compose([HalfResolution(), Invert(), LocalPixelShuffling(max_block_size=4), Painting(inpainting_prob=0.6, fill_mode='random')])
     #train_input_transform = Compose([HalfResolution()])
     #train_input_transform = Compose([RandomWindow(), CompressOutOfWindow(), RandomGamma(), Normalize(dcmdataset.mean, dcmdataset.std)])
@@ -163,9 +163,9 @@ def main(args):
     criterion_bce = nn.BCELoss()
     #criterion_train = [ {'name':'L1', 'lossfunction': criterion_l1, 'weight': 0.6},
     #                    {'name':'MSE', 'lossfunction': criterion_mse, 'weight': 0.4}]
-    criterion_train = [ {'name':'L1', 'lossfunction': criterion_l1, 'weight': 0.95},
-                        {'name':'BCE', 'lossfunction': criterion_bce, 'weight': 0.05},
-                        {'name':'MSE', 'lossfunction': criterion_mse, 'weight': 0.0}]
+    criterion_train = [ {'name':'L1', 'lossfunction': criterion_l1, 'weight': 0.1},
+                        {'name':'BCE', 'lossfunction': criterion_bce, 'weight': 0.0},
+                        {'name':'MSE', 'lossfunction': criterion_mse, 'weight': 0.9}]
     criterion_valid = [ {'name':'L1', 'lossfunction': criterion_l1, 'weight': 1.0},
                         {'name':'BCE', 'lossfunction': criterion_bce, 'weight': 0.0},
                         {'name':'MSE', 'lossfunction': criterion_mse, 'weight': 0.0}]
@@ -316,13 +316,13 @@ if __name__ == "__main__":
     parser.add_argument('--data-path', default='~/KVGH', help='dataset')
     parser.add_argument('--device', default='cuda', help='device')
     parser.add_argument("--model", default="densenet121", help="model")
-    parser.add_argument('-b', '--batch-size', default=96, type=int,
+    parser.add_argument('-b', '--batch-size', default=64, type=int,
                         help='images per gpu, the total batch size is $NGPU x batch_size')
     parser.add_argument('--epochs', default=100, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('-j', '--workers', default=16, type=int, metavar='N',
                         help='number of data loading workers (default: 16)')
-    parser.add_argument('--lr', default=0.001, type=float,
+    parser.add_argument('--lr', default=0.01, type=float,
                         help='initial learning rate, 0.02 is the default value for training '
                         'on 8 gpus and 2 images_per_gpu')
     parser.add_argument('--momentum', default=0.9, type=float, metavar='M',

@@ -15,7 +15,7 @@ class ExpansionBlock(nn.Module):
     # https://ngc.nvidia.com/catalog/model-scripts/nvidia:resnet_50_v1_5_for_pytorch.
 
     def __init__(self, lowres_inplanes, shortcut_inplanes, outplanes, scale=2, scaler='upsample', groups=1,
-                 base_width=64, norm_layer=None, res=False, droprate=0, shortcut_droprate=0.5, drop_func=F.dropout):
+                 base_width=64, norm_layer=None, res=False, droprate=0., shortcut_droprate=0.5, drop_func=F.dropout):
         super(ExpansionBlock, self).__init__()
         self.res = res
         self.droprate = droprate
@@ -81,7 +81,7 @@ class UnetDecoder(nn.Module):
         norm_layer = None,
         scaler='upsample',
         res = False,
-        droprate = 0,
+        droprate = 0.,
         shortcut_droprate = 0.5,
         drop_func = F.dropout,
         no_shortcut = False,
@@ -102,9 +102,9 @@ class UnetDecoder(nn.Module):
             if idx == 0:
                 block_module = ExpansionBlock(in_channels, 0 if no_shortcut else in_channels_list[idx+1], in_channels_list[idx+1], scale=scale_list[idx], scaler=scaler, norm_layer=norm_layer, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, drop_func=drop_func)
             elif idx < num_inputs - 1:
-                block_module = ExpansionBlock(in_channels, 0 if no_shortcut else in_channels_list[idx+1], in_channels_list[idx+1], scale=scale_list[idx], scaler=scaler, norm_layer=norm_layer, res=res, droprate=0, shortcut_droprate=shortcut_droprate, drop_func=drop_func)
+                block_module = ExpansionBlock(in_channels, 0 if no_shortcut else in_channels_list[idx+1], in_channels_list[idx+1], scale=scale_list[idx], scaler=scaler, norm_layer=norm_layer, res=res, droprate=0., shortcut_droprate=shortcut_droprate, drop_func=drop_func)
             else:
-                block_module = ExpansionBlock(in_channels, 0, in_channels, scale=scale_list[idx], scaler=scaler, norm_layer=norm_layer, res=res, droprate=0, shortcut_droprate=shortcut_droprate, drop_func=drop_func)
+                block_module = ExpansionBlock(in_channels, 0, in_channels, scale=scale_list[idx], scaler=scaler, norm_layer=norm_layer, res=res, droprate=0., shortcut_droprate=shortcut_droprate, drop_func=drop_func)
             
             self.blocks.append(block_module)
         if multiscale_out:

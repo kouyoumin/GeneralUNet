@@ -108,8 +108,9 @@ class UnetDecoder(nn.Module):
             
             self.blocks.append(block_module)
         if multiscale_out:
-            for idx in range(len(self.blocks)):
-                self.outtrans.append(OutputTransition(self.blocks[idx].outplanes, out_channels, sigmoid=sigmoid))
+            n_blocks = len(self.blocks)
+            for idx in range(n_blocks):
+                self.outtrans.append(OutputTransition(self.blocks[n_blocks - 1 -idx].outplanes, out_channels, sigmoid=sigmoid))
         else:
             self.outtrans.append(OutputTransition(self.blocks[-1].outplanes, out_channels, sigmoid=sigmoid))
         # initialize parameters now to avoid modifying the initialization of top_blocks
@@ -141,7 +142,7 @@ class UnetDecoder(nn.Module):
             #print(idx, shortcut.shape if shortcut is not None else 'None')
             out = self.blocks[idx](self.act(x[0]) if idx == 0 else out, shortcut)
             if self.multiscale_out:
-                outs.append(self.outtrans[idx](out))
+                outs.append(self.outtrans[num_layers - 1 - idx](out))
             elif idx == num_layers - 1:
                 return self.outtrans[0](out)
         

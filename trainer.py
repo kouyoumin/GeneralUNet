@@ -1,15 +1,22 @@
 import torch
 from torch import nn
+import torchvision
 import torch.nn.functional as F
-from adabelief import AdaBelief
-from rangerlars import RangerLars
+
+import sys
+sys.path.append('over9000')
+from over9000.rangerlars import RangerLars
+from over9000.adabelief import AdaBelief
+
+from TorchModelModifier.modify_model_in import modify_first_conv_in_channels
+
 import numpy as np
 import time
 import datetime
 import os
 import cv2
 
-from myresnet import resnext50_32x4d_fe
+#from myresnet import resnext50_32x4d_fe
 from myunet import UnetWithBackbone
 from transforms import RandomResizedCrop2D, Resize2D, InPainting, OutPainting, Painting, LocalPixelShuffling, RandomWindow, CompressOutOfWindow, RandomGamma, RandomHorizontalFlip, Normalize, Compose
 from autoencodedataset import DicomDataset, PatchDataset2D, AutoEncodeDataset
@@ -29,25 +36,25 @@ def main(args):
     # our dataset has two classes only - background and person
     num_classes = 1
     # use our dataset and defined transformations
-    dcmdataset = DicomDataset('~/KVGH', recursive=True, ext='')
+    dcmdataset = DicomDataset('../data/202308mix', recursive=True, ext='.dcm')
     train_size = len(dcmdataset) - int(0.05*len(dcmdataset))
     valid_size = len(dcmdataset) - train_size
     train_dcmdataset, valid_dcmdataset = torch.utils.data.random_split(dcmdataset, [train_size, valid_size])
-    valid_pdataset = PatchDataset2D(valid_dcmdataset, 256/1120, 256/896, 0.5)
+    #valid_pdataset = PatchDataset2D(valid_dcmdataset, 256/1120, 256/896, 0.5)
     
-    train_general_transform = Compose([RandomResizedCrop2D(256), RandomHorizontalFlip()])
-    train_input_transform = Compose([LocalPixelShuffling(), Painting(fill_mode='random'), RandomWindow(), CompressOutOfWindow(), RandomGamma(), Normalize(dcmdataset.mean, dcmdataset.std)])
+    train_general_transform = Compose([RandomResizedCrop2D(256, scale=(0.5, 1)), RandomHorizontalFlip()])
+    train_input_transform = Compose([LocalPixelShuffling(), Painting(fill_mode='noise'), RandomWindow(), CompressOutOfWindow(), RandomGamma(), Normalize(dcmdataset.mean, dcmdataset.std)])
     #train_input_transform = Compose([RandomWindow(), CompressOutOfWindow(), RandomGamma(), Normalize(dcmdataset.mean, dcmdataset.std)])
     train_target_transform = Compose([CompressOutOfWindow()])
 
     rs = np.random.RandomState(0)
-    valid_general_transform = Compose([Resize2D((256, 256))])
-    valid_input_transform = Compose([LocalPixelShuffling(random_state=rs), Painting(random_state=rs, fill_mode='random'), RandomWindow(random_state=rs), CompressOutOfWindow(), RandomGamma(random_state=rs), Normalize(dcmdataset.mean, dcmdataset.std)])
+    valid_general_transform = Compose([Resize2D((288, 288), antialias=True)])
+    valid_input_transform = Compose([LocalPixelShuffling(random_state=rs), Painting(random_state=rs, fill_mode='noise'), RandomWindow(random_state=rs), CompressOutOfWindow(), RandomGamma(random_state=rs), Normalize(dcmdataset.mean, dcmdataset.std)])
     #valid_input_transform = Compose([RandomWindow(random_state=rs), CompressOutOfWindow(), RandomGamma(random_state=rs), Normalize(dcmdataset.mean, dcmdataset.std)])
     valid_target_transform = Compose([CompressOutOfWindow()])
 
     train_dataset = AutoEncodeDataset(train_dcmdataset, train_general_transform, train_input_transform, train_target_transform)
-    valid_dataset = AutoEncodeDataset(valid_pdataset, valid_general_transform, valid_input_transform, valid_target_transform)
+    valid_dataset = AutoEncodeDataset(valid_dcmdataset, valid_general_transform, valid_input_transform, valid_target_transform)
 
     train_data_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers)
@@ -55,19 +62,26 @@ def main(args):
     valid_data_loader = torch.utils.data.DataLoader(
         valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers)
 
-    backbone = resnext50_32x4d_fe(pretrained=True, grayscale=True)
-    model = UnetWithBackbone(backbone, {'layer4':'layer4', 'layer3':'layer3', 'layer2':'layer2', 'layer1':'layer1', 'relu':'relu'}, num_classes, scaler='deconv', res=True, droprate=0.5, shortcut_droprate=0.75, drop_func=F.dropout2d if args.dropout2d else F.dropout)
+    #backbone = resnext50_32x4d_fe(pretrained=True, grayscale=True)
+    #model = UnetWithBackbone(backbone, {'layer4':'layer4', 'layer3':'layer3', 'layer2':'layer2', 'layer1':'layer1', 'relu':'relu'}, num_classes, scaler='deconv', res=True, droprate=0.5, shortcut_droprate=0.75, drop_func=F.dropout2d if args.dropout2d else F.dropout)
+    arch = 'densenet121'
+    backbone = torchvision.models.__dict__[arch](weights=torchvision.models.get_model_weights(arch).DEFAULT if args.pretrained else None)#pretrained=args.pretrained)
+    modify_first_conv_in_channels(backbone, new_in_channels=1)
+    return_layers = {'norm5':'norm5', 'transition3':'transition3', 'transition2':'transition2', 'transition1':'transition1', 'relu0':'relu0'}
+    model = UnetWithBackbone(backbone.features, return_layers, num_classes, scaler='deconv', res=False, droprate=0., shortcut_droprate=0.5, drop_func=F.dropout2d, add_activation=nn.ReLU(), sigmoid=True)
+    print(model)
+    
     model.to(device)
 
     model_without_dp = model
 
     params = [p for p in model.parameters() if p.requires_grad]
-    #optimizer = torch.optim.SGD(params, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=True)
+    optimizer = torch.optim.SGD(params, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=True)
     #optimizer = AdaBelief(params, lr=args.lr, eps=1e-8, weight_decay=args.weight_decay, weight_decouple=False, rectify=False)
-    optimizer = RangerLars(params, lr=args.lr, weight_decay=args.weight_decay)
+    #optimizer = RangerLars(params, lr=args.lr, weight_decay=args.weight_decay)
     # lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step_size, gamma=args.lr_gamma)
     #lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.lr_steps, gamma=args.lr_gamma)
-    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.lr_gamma, patience=2, verbose=True)
+    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.lr_gamma, patience=10, verbose=True)
 
     best_valid_metric = 1000
     best_train_metric = 1000
@@ -87,8 +101,8 @@ def main(args):
     model = nn.DataParallel(model)
     criterion_l1 = nn.L1Loss()
     criterion_mse = nn.MSELoss()
-    criterion_train = [ {'name':'L1', 'lossfunction': criterion_l1, 'weight': 0.5},
-                        {'name':'MSE', 'lossfunction': criterion_mse, 'weight': 0.5}]
+    criterion_train = [ {'name':'L1', 'lossfunction': criterion_l1, 'weight': 0.7},
+                        {'name':'MSE', 'lossfunction': criterion_mse, 'weight': 0.3}]
     criterion_valid = [ {'name':'MSE', 'lossfunction': criterion_mse, 'weight': 1.0}]
     
     print("Start training")
@@ -102,7 +116,7 @@ def main(args):
         epoch_train_end_time = time.time()
 
         valid_input_transform.transforms[0].random_state.seed(0)
-        valid_loss = evaluate(model, valid_data_loader, criterion_valid, device, epoch, 10*args.print_freq, dcmdataset.mean, dcmdataset.std, outdir)
+        valid_loss = evaluate(model, valid_data_loader, criterion_valid, device, epoch, args.print_freq, dcmdataset.mean, dcmdataset.std, outdir)
         epoch_valid_end_time = time.time()
         print('Training time: %fs, Validation time: %fs' % (int(epoch_train_end_time - epoch_start_time), int(epoch_valid_end_time - epoch_train_end_time)))
         metric = valid_loss
@@ -207,7 +221,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--data-path', default='~/KVGH', help='dataset')
     parser.add_argument('--device', default='cuda', help='device')
-    parser.add_argument('-b', '--batch-size', default=64, type=int,
+    parser.add_argument('-b', '--batch-size', default=16, type=int,
                         help='images per gpu, the total batch size is $NGPU x batch_size')
     parser.add_argument('--epochs', default=300, type=int, metavar='N',
                         help='number of total epochs to run')

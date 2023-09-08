@@ -33,8 +33,8 @@ class HalfResolution(torch.nn.Module):
         if isinstance(image, torch.Tensor):
             #interpolation = self.random_state.choice(list(InterpolationMode))
             interpolation = self.random_state.choice([InterpolationMode.NEAREST, InterpolationMode.BILINEAR, InterpolationMode.BICUBIC])
-            out = F.resize(image, [image.shape[-2]//2, image.shape[-1]//2], interpolation)
-            out = F.resize(out, [image.shape[-2], image.shape[-1]], InterpolationMode.NEAREST)
+            out = F.resize(image, [image.shape[-2]//2, image.shape[-1]//2], interpolation, antialias=True)
+            out = F.resize(out, [image.shape[-2], image.shape[-1]], InterpolationMode.NEAREST, antialias=True)
         else:
             interpolation = self.random_state.choice([cv2.INTER_AREA, cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC])
             out = cv2.resize(image[0] if image.ndim == 3 else image, [image.shape[-1]//2, image.shape[-2]//2], interpolation = interpolation)
@@ -312,7 +312,7 @@ class Normalize(torch.nn.Module):
 
 class RandomResizedCrop2D(torchvision.transforms.RandomResizedCrop):
     def __init__(self, size, scale=(0.055, 0.075), ratio=(0.8, 1.25), interpolation=InterpolationMode.BILINEAR):
-        super(RandomResizedCrop2D, self).__init__(size, scale, ratio, interpolation)
+        super(RandomResizedCrop2D, self).__init__(size, scale, ratio, interpolation, antialias=True)
     
     def __call__(self, image):
         if not isinstance(image, torch.Tensor):
@@ -328,7 +328,7 @@ class RandomResizedCrop2D(torchvision.transforms.RandomResizedCrop):
 
 
 class Resize2D(torchvision.transforms.Resize):
-    def __init__(self, size, interpolation=InterpolationMode.BILINEAR, max_size=None, antialias=None):
+    def __init__(self, size, interpolation=InterpolationMode.BILINEAR, max_size=None, antialias=True):
         super(Resize2D, self).__init__(size, interpolation, max_size, antialias)
     
     def __call__(self, image):

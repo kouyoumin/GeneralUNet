@@ -119,8 +119,8 @@ class PatchDataset2D(Dataset):
 
 class ImageOnlyDataset(Dataset):
     def __init__(self, root, recursive=False, ext=None):
-        if isinstance(root, torch._six.string_classes):
-            root = os.path.expanduser(root)
+        #if isinstance(root, torch._six.string_classes):
+        #    root = os.path.expanduser(root)
         
         self.root = root
         if not self._load():
@@ -268,8 +268,8 @@ class DicomDataset(ImageOnlyDataset):
                 wc= dcm.WindowCenter
                 ww = dcm.WindowWidth
                 pix = dcm.pixel_array
-                assert(pix.ndim == 2)
-                assert(pix.size > 3000 * 2000)
+                #assert(pix.ndim == 2)
+                #assert(pix.size > 3000 * 2000)
                 #if pix.shape[0] > 4000 or pix.shape[1] > 4000:
                 #    print('Large image (%dx%d): %s' % (pix.shape[0], pix.shape[1], path))
             except:

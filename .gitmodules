@@ -1,3 +1,6 @@
-[submodule "pytorch_in_changer"]
-	path = pytorch_in_changer
-	url = https://github.com/kouyoumin/pytorch_in_changer
+[submodule "over9000"]
+	path = over9000
+	url = https://github.com/mgrankin/over9000.git
+[submodule "TorchModelModifier"]
+	path = TorchModelModifier
+	url = https://github.com/kouyoumin/TorchModelModifier.git

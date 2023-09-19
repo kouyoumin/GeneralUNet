@@ -175,8 +175,8 @@ class UnetWithBackbone(nn.Module):
         self.classifier_out = classifier_out
         self.multiscale_out = multiscale_out
         in_channels_list, scale_list = self._get_channel_scale_info()
-        print('in_channels_list', in_channels_list)
-        print('scale_list', scale_list)
+        print('unet decoder in_channels_list', in_channels_list)
+        print('unet decoder scale_list', scale_list)
         if classifier_out:
             self.classifier = nn.Sequential(add_activation, nn.AdaptiveAvgPool2d((1,1)), nn.Flatten(), nn.Dropout(p=cls_droprate), nn.Linear(in_channels_list[0], classifier_out))
         self.decoder = UnetDecoder(in_channels_list, scale_list, out_channels, scaler=scaler, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, no_shortcut=no_shortcut, multiscale_out=multiscale_out, add_activation=add_activation, sigmoid=sigmoid, drop_func=drop_func)
@@ -197,14 +197,14 @@ class UnetWithBackbone(nn.Module):
         with torch.no_grad():
             for p in self.body.parameters():
                 dummy = torch.zeros((1,p.shape[1],128,128))
-                print('dummy', dummy.shape)
+                #print('dummy', dummy.shape)
                 break
             feats = self.body(dummy)
             #for key in feats:
             #    print(feats[key].shape)
             feats = list(feats.values())[::-1]
             for idx in range(len(feats)):
-                print(feats[idx].shape)
+                #print(feats[idx].shape)
                 ch_list.append(feats[idx].shape[1])
                 if idx > 0:
                     sc_list.append(feats[idx].shape[2]//feats[idx-1].shape[2])

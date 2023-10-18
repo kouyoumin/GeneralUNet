@@ -68,7 +68,7 @@ def main(args):
     backbone = torchvision.models.__dict__[arch](weights=torchvision.models.get_model_weights(arch).DEFAULT if args.pretrained else None)#pretrained=args.pretrained)
     modify_first_conv_in_channels(backbone, new_in_channels=1)
     return_layers = {'norm5':'norm5', 'transition3':'transition3', 'transition2':'transition2', 'transition1':'transition1', 'relu0':'relu0'}
-    model = UnetWithBackbone(backbone.features, return_layers, num_classes, scaler='deconv', res=False, droprate=0., shortcut_droprate=0.5, drop_func=F.dropout2d, add_activation=nn.ReLU(), sigmoid=True)
+    model = UnetWithBackbone(backbone.features, return_layers, num_classes, scaler='upsample' if args.upsample else 'deconv', res=args.residual, droprate=0., shortcut_droprate=0.5, drop_func=F.dropout2d, add_activation=nn.ReLU(), sigmoid=True)
     print(model)
     
     model.to(device)
@@ -272,6 +272,8 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument("--local_rank", type=int, default=0)
+    parser.add_argument("--upsample", action="store_true", help="Use upsample in decoder instead of deconvolution")
+    parser.add_argument("--residual", action="store_true", help="Use residual shortcut instead of concatenation in unet")
 
     # distributed training parameters
     parser.add_argument('--world-size', default=1, type=int,

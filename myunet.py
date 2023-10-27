@@ -29,7 +29,7 @@ class ExpansionBlock(nn.Module):
         if scaler == 'deconv':
             self.scale0 = nn.ConvTranspose2d(lowres_inplanes, outplanes, kernel_size=scale, stride=scale, groups=outplanes, bias=False)
         else:
-            self.scale0 = nn.Sequential(nn.Upsample(scale_factor=scale, mode='bilinear', align_corners=True), nn.Conv2d(lowres_inplanes, outplanes, kernel_size=1, bias=False))
+            self.scale0 = nn.Sequential(nn.Conv2d(lowres_inplanes, outplanes, kernel_size=1, bias=False), nn.Upsample(scale_factor=scale, mode='bilinear', align_corners=True))
         self.bn0 = norm_layer(outplanes)
         if shortcut_inplanes > 0:
             if res:

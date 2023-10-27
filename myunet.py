@@ -29,7 +29,7 @@ class ExpansionBlock(nn.Module):
         if scaler == 'deconv':
             self.scale0 = nn.ConvTranspose2d(lowres_inplanes, outplanes, kernel_size=scale, stride=scale, groups=outplanes, bias=False)
         else:
-            self.scale0 = nn.Sequential(nn.Upsample(scale_factor=scale, mode='bilinear'), nn.Conv2d(lowres_inplanes, outplanes, kernel_size=1, bias=False))
+            self.scale0 = nn.Sequential(nn.Upsample(scale_factor=scale, mode='bilinear', align_corners=True), nn.Conv2d(lowres_inplanes, outplanes, kernel_size=1, bias=False))
         self.bn0 = norm_layer(outplanes)
         if shortcut_inplanes > 0:
             if res:
@@ -46,8 +46,8 @@ class ExpansionBlock(nn.Module):
         out = self.bn0(self.scale0(lowres_in))
         if shortcut_in is not None:
             shortcut_in = self.drop_func(shortcut_in, p=self.shortcut_droprate, training=self.training)
-            if out.shape[2:] != shortcut_in.shape[2:]:
-                out = F.interpolate(out, shortcut_in.size()[2:], mode='bilinear')
+            #if out.shape[2:] != shortcut_in.shape[2:]:
+            out = F.interpolate(out, shortcut_in.size()[2:], mode='bilinear', align_corners =True)
             if self.res:
                 out = self.bn1(self.conv1(shortcut_in)) + out
             else:

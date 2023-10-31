@@ -43,16 +43,16 @@ class ExpansionBlock(nn.Module):
     #@autocast
     def forward(self, lowres_in, shortcut_in=None):
         lowres_in = self.drop_func(lowres_in, p=self.droprate, training=self.training)
-        out = self.bn0(self.scale0(lowres_in))
+        out = self.bn0(self.scale0(lowres_in)).relu_()
         if shortcut_in is not None:
             shortcut_in = self.drop_func(shortcut_in, p=self.shortcut_droprate, training=self.training)
             #if out.shape[2:] != shortcut_in.shape[2:]:
             out = F.interpolate(out, shortcut_in.size()[2:], mode='bilinear', align_corners =True)
             if self.res:
-                out = self.bn1(self.conv1(shortcut_in)) + out
+                out = (self.bn1(self.conv1(shortcut_in)) + out).relu_()
             else:
                 out = torch.cat((out, shortcut_in), 1)
-                out = self.bn1(self.conv1(out))
+                out = self.bn1(self.conv1(out)).relu_()
         out = self.resblock(out)
 
         return out

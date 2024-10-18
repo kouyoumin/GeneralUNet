@@ -4,7 +4,7 @@ from torch.cuda.amp import autocast
 import torch.nn.functional as F
 from torchvision.models._utils import IntermediateLayerGetter
 from torchvision.models.resnet import BasicBlock
-from typing import Tuple, List, Dict, Optional
+from typing import Mapping, Tuple, List, Dict, Any,Optional
 
 
 class ExpansionBlock(nn.Module):
@@ -224,6 +224,16 @@ class UnetWithBackbone(nn.Module):
             embedding = list(enc.values())[-1]
             return self.classifier(embedding), dec
         return dec
+    
+    
+    def load_state_dict(self, state_dict: Mapping[str, Any], strict: bool = True, assign: bool = False):
+        new_state_dict = {}
+        for k, v in state_dict.items():
+            if k.startswith('body.'):
+                new_state_dict['encoder.' + k[5:]] = v
+            else:
+                new_state_dict[k] = v
+        return super().load_state_dict(new_state_dict, strict, assign)
 
 
 if __name__ == '__main__':

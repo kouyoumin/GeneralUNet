@@ -171,7 +171,7 @@ class UnetWithBackbone(nn.Module):
         super(UnetWithBackbone, self).__init__()
 
         #self.backbone = backbone
-        self.body = IntermediateLayerGetter(backbone, return_layers=return_layers)
+        self.encoder = IntermediateLayerGetter(backbone, return_layers=return_layers)
         self.classifier_out = classifier_out
         self.multiscale_out = multiscale_out
         in_channels_list, scale_list = self._get_channel_scale_info()
@@ -195,11 +195,11 @@ class UnetWithBackbone(nn.Module):
         self.eval()
         
         with torch.no_grad():
-            for p in self.body.parameters():
+            for p in self.encoder.parameters():
                 dummy = torch.zeros((1,p.shape[1],128,128))
                 #print('dummy', dummy.shape)
                 break
-            feats = self.body(dummy)
+            feats = self.encoder(dummy)
             #for key in feats:
             #    print(feats[key].shape)
             feats = list(feats.values())[::-1]
@@ -216,8 +216,9 @@ class UnetWithBackbone(nn.Module):
         return ch_list, sc_list  
     
     #@autocast
+    #@torch.compile
     def forward(self, x):
-        enc = self.body(x)
+        enc = self.encoder(x)
         dec = self.decoder(enc)
         if self.classifier_out:
             embedding = list(enc.values())[-1]

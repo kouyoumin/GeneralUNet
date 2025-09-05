@@ -14,13 +14,16 @@ class ExpansionBlock(nn.Module):
     # This variant is also known as ResNet V1.5 and improves accuracy according to
     # https://ngc.nvidia.com/catalog/model-scripts/nvidia:resnet_50_v1_5_for_pytorch.
 
+    interpolation_mode = {3: 'linear',
+                          4: 'bilinear',
+                          5: 'trilinear'}
+    
     def __init__(self, lowres_inplanes, shortcut_inplanes, outplanes, scale=2, scaler='upsample',
-                 base_width=64, norm_layer=None, res=False, droprate=0., shortcut_droprate=0.5, drop_func=F.dropout):
+                 base_width=64, norm_layer=None, res=False, droprate=0., shortcut_droprate=0.5, drop_nd=True):
         super(ExpansionBlock, self).__init__()
         self.res = res
-        self.droprate = droprate
-        self.shortcut_droprate = shortcut_droprate
-        self.drop_func = drop_func
+        self.drop_func = nn.Dropout2d(p=droprate) if drop_nd else nn.Dropout(p=droprate)
+        self.shortcut_drop_func=nn.Dropout2d(p=shortcut_droprate) if drop_nd else nn.Dropout(p=shortcut_droprate)
         self.outplanes = outplanes
         
         if norm_layer is None:
@@ -44,12 +47,12 @@ class ExpansionBlock(nn.Module):
 
     #@autocast
     def forward(self, lowres_in, shortcut_in=None):
-        lowres_in = self.drop_func(lowres_in, p=self.droprate, training=self.training)
+        lowres_in = self.drop_func(lowres_in)
         out = self.bn0(self.scale0(lowres_in)).relu_()
         if shortcut_in is not None:
-            shortcut_in = self.drop_func(shortcut_in, p=self.shortcut_droprate, training=self.training)
-            #if out.shape[2:] != shortcut_in.shape[2:]:
-            out = F.interpolate(out, shortcut_in.size()[2:], mode='bilinear', align_corners =True)
+            shortcut_in = self.shortcut_drop_func(shortcut_in)
+            
+            out = F.interpolate(out, shortcut_in.size()[2:], mode=self.interpolation_mode[lowres_in.dim()], align_corners =True)
             if self.res:
                 out = (self.bn1(self.conv1(shortcut_in)) + out).relu_()
             else:
@@ -85,7 +88,7 @@ class UnetDecoder(nn.Module):
         res = False,
         droprate = 0.,
         shortcut_droprate = 0.5,
-        drop_func = F.dropout,
+        drop_nd = True,
         no_shortcut = False,
         multiscale_out = False,
         #add_activation = nn.Identity(),
@@ -102,11 +105,11 @@ class UnetDecoder(nn.Module):
             if in_channels == 0:
                 raise ValueError("in_channels=0 is currently not supported")
             if idx == 0:
-                block_module = ExpansionBlock(in_channels, 0 if no_shortcut else in_channels_list[idx+1], in_channels_list[idx+1], scale=scale_list[idx], scaler=scaler, norm_layer=norm_layer, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, drop_func=drop_func)
+                block_module = ExpansionBlock(in_channels, 0 if no_shortcut else in_channels_list[idx+1], in_channels_list[idx+1], scale=scale_list[idx], scaler=scaler, norm_layer=norm_layer, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, drop_nd=drop_nd)
             elif idx < num_inputs - 1:
-                block_module = ExpansionBlock(in_channels, 0 if no_shortcut else in_channels_list[idx+1], in_channels_list[idx+1], scale=scale_list[idx], scaler=scaler, norm_layer=norm_layer, res=res, droprate=0., shortcut_droprate=shortcut_droprate, drop_func=drop_func)
+                block_module = ExpansionBlock(in_channels, 0 if no_shortcut else in_channels_list[idx+1], in_channels_list[idx+1], scale=scale_list[idx], scaler=scaler, norm_layer=norm_layer, res=res, droprate=0., shortcut_droprate=shortcut_droprate, drop_nd=drop_nd)
             else:
-                block_module = ExpansionBlock(in_channels, 0, in_channels, scale=scale_list[idx], scaler=scaler, norm_layer=norm_layer, res=res, droprate=0., shortcut_droprate=shortcut_droprate, drop_func=drop_func)
+                block_module = ExpansionBlock(in_channels, 0, in_channels, scale=scale_list[idx], scaler=scaler, norm_layer=norm_layer, res=res, droprate=0., shortcut_droprate=shortcut_droprate, drop_nd=drop_nd)
             
             self.blocks.append(block_module)
         if multiscale_out:
@@ -173,7 +176,7 @@ class UnetWithBackbone(nn.Module):
     Attributes:
         out_channels (int): the number of channels in the FPN
     """
-    def __init__(self, backbone, return_layers, out_channels, scaler='upsample', one_by_one_latent=False, res=False, droprate=0.5, shortcut_droprate=0.5, cls_droprate=0.5, no_shortcut=False, add_activation=nn.Identity(), sigmoid=True, classifier_out=0, multiscale_out=False, drop_func=F.dropout):
+    def __init__(self, backbone, return_layers, out_channels, scaler='upsample', one_by_one_latent=False, res=False, droprate=0.5, shortcut_droprate=0.5, cls_droprate=0.5, no_shortcut=False, add_activation=nn.Identity(), sigmoid=True, classifier_out=0, multiscale_out=False, drop_nd=True):
         super(UnetWithBackbone, self).__init__()
 
         #self.backbone = backbone
@@ -196,7 +199,7 @@ class UnetWithBackbone(nn.Module):
                 self.classifier = nn.Sequential(nn.Flatten(), nn.Dropout(p=cls_droprate), nn.Linear(in_channels_list[0], classifier_out))
             else:
                 self.classifier = nn.Sequential(nn.AdaptiveAvgPool2d((1,1)), nn.Flatten(), nn.Dropout(p=cls_droprate), nn.Linear(in_channels_list[0], classifier_out))
-        self.decoder = UnetDecoder(in_channels_list, scale_list, out_channels, scaler=scaler, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, no_shortcut=no_shortcut, multiscale_out=multiscale_out, sigmoid=sigmoid, drop_func=drop_func)
+        self.decoder = UnetDecoder(in_channels_list, scale_list, out_channels, scaler=scaler, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, no_shortcut=no_shortcut, multiscale_out=multiscale_out, sigmoid=sigmoid, drop_nd=drop_nd)
         '''self.fpn = FeaturePyramidNetwork(
             in_channels_list=in_channels_list,
             out_channels=out_channels,

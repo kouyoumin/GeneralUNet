@@ -14,7 +14,7 @@ class ExpansionBlock(nn.Module):
     # This variant is also known as ResNet V1.5 and improves accuracy according to
     # https://ngc.nvidia.com/catalog/model-scripts/nvidia:resnet_50_v1_5_for_pytorch.
 
-    def __init__(self, lowres_inplanes, shortcut_inplanes, outplanes, scale=2, scaler='upsample', groups=1,
+    def __init__(self, lowres_inplanes, shortcut_inplanes, outplanes, scale=2, scaler='upsample',
                  base_width=64, norm_layer=None, res=False, droprate=0., shortcut_droprate=0.5, drop_func=F.dropout):
         super(ExpansionBlock, self).__init__()
         self.res = res
@@ -27,7 +27,9 @@ class ExpansionBlock(nn.Module):
             norm_layer = nn.BatchNorm2d
         # Both self.conv2 and self.downsample layers downsample the input when stride != 1
         if scaler == 'deconv':
-            self.scale0 = nn.ConvTranspose2d(lowres_inplanes, outplanes, kernel_size=scale, stride=scale, groups=outplanes, bias=False)
+            import math
+            groups = math.gcd(lowres_inplanes, outplanes)
+            self.scale0 = nn.ConvTranspose2d(lowres_inplanes, outplanes, kernel_size=scale, stride=scale, groups=groups, bias=False)
         else:
             self.scale0 = nn.Sequential(nn.Conv2d(lowres_inplanes, outplanes, kernel_size=1, bias=False), nn.Upsample(scale_factor=scale, mode='bilinear', align_corners=True))
         self.bn0 = norm_layer(outplanes)
@@ -86,7 +88,7 @@ class UnetDecoder(nn.Module):
         drop_func = F.dropout,
         no_shortcut = False,
         multiscale_out = False,
-        add_activation = nn.Identity(),
+        #add_activation = nn.Identity(),
         sigmoid = True
     ):
         super(UnetDecoder, self).__init__()
@@ -94,7 +96,7 @@ class UnetDecoder(nn.Module):
         self.multiscale_out = multiscale_out
         self.blocks = nn.ModuleList()
         self.outtrans = nn.ModuleList()
-        self.act = add_activation
+        #self.act = add_activation
         num_inputs = len(in_channels_list)
         for idx, in_channels in enumerate(in_channels_list):
             if in_channels == 0:
@@ -123,10 +125,12 @@ class UnetDecoder(nn.Module):
     
     
     #@autocast
-    def forward(self, x: Dict[str, torch.Tensor]) -> torch.Tensor:
+    #def forward(self, x: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def forward(self, x: List[torch.Tensor]) -> torch.Tensor:
         num_inputs = len(x)
         num_layers = len(self.blocks)
-        x = list(x.values())[::-1]
+        #x = list(x.values())[::-1]
+        x = x[::-1]
         '''out = x[0]
         for idx in range(num_inputs - 1):
             out = self.blocks[idx](out, None if self.no_shortcut else x[idx+1])
@@ -138,9 +142,11 @@ class UnetDecoder(nn.Module):
             out = self.blocks[idx](out)'''
         outs = []
         for idx in range(num_layers):
-            shortcut = self.act(x[idx+1]) if idx < num_inputs - 1 and not self.no_shortcut else None
+            #shortcut = self.act(x[idx+1]) if idx < num_inputs - 1 and not self.no_shortcut else None
+            shortcut = x[idx+1] if idx < num_inputs - 1 and not self.no_shortcut else None
             #print(idx, shortcut.shape if shortcut is not None else 'None')
-            out = self.blocks[idx](self.act(x[0]) if idx == 0 else out, shortcut)
+            #out = self.blocks[idx](self.act(x[0]) if idx == 0 else out, shortcut)
+            out = self.blocks[idx](x[0] if idx == 0 else out, shortcut)
             if self.multiscale_out:
                 outs.append(self.outtrans[num_layers - 1 - idx](out))
             elif idx == num_layers - 1:
@@ -167,19 +173,30 @@ class UnetWithBackbone(nn.Module):
     Attributes:
         out_channels (int): the number of channels in the FPN
     """
-    def __init__(self, backbone, return_layers, out_channels, scaler='upsample', res=False, droprate=0.5, shortcut_droprate=0.5, cls_droprate=0.5, no_shortcut=False, add_activation=nn.Identity(), sigmoid=True, classifier_out=0, multiscale_out=False, drop_func=F.dropout):
+    def __init__(self, backbone, return_layers, out_channels, scaler='upsample', one_by_one_latent=False, res=False, droprate=0.5, shortcut_droprate=0.5, cls_droprate=0.5, no_shortcut=False, add_activation=nn.Identity(), sigmoid=True, classifier_out=0, multiscale_out=False, drop_func=F.dropout):
         super(UnetWithBackbone, self).__init__()
 
         #self.backbone = backbone
         self.encoder = IntermediateLayerGetter(backbone, return_layers=return_layers)
+        self.act = add_activation
         self.classifier_out = classifier_out
         self.multiscale_out = multiscale_out
-        in_channels_list, scale_list = self._get_channel_scale_info()
+        self.one_by_one_latent = one_by_one_latent
+        in_channels_list, scale_list = self._get_channel_scale_info(one_by_one_latent=one_by_one_latent)
         print('unet decoder in_channels_list', in_channels_list)
         print('unet decoder scale_list', scale_list)
+        
+        if one_by_one_latent:
+            self.latent_pooling = nn.AdaptiveAvgPool2d((1,1))
+        else:
+            self.latent_pooling = nn.Identity()
+        
         if classifier_out:
-            self.classifier = nn.Sequential(add_activation, nn.AdaptiveAvgPool2d((1,1)), nn.Flatten(), nn.Dropout(p=cls_droprate), nn.Linear(in_channels_list[0], classifier_out))
-        self.decoder = UnetDecoder(in_channels_list, scale_list, out_channels, scaler=scaler, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, no_shortcut=no_shortcut, multiscale_out=multiscale_out, add_activation=add_activation, sigmoid=sigmoid, drop_func=drop_func)
+            if one_by_one_latent:
+                self.classifier = nn.Sequential(nn.Flatten(), nn.Dropout(p=cls_droprate), nn.Linear(in_channels_list[0], classifier_out))
+            else:
+                self.classifier = nn.Sequential(nn.AdaptiveAvgPool2d((1,1)), nn.Flatten(), nn.Dropout(p=cls_droprate), nn.Linear(in_channels_list[0], classifier_out))
+        self.decoder = UnetDecoder(in_channels_list, scale_list, out_channels, scaler=scaler, res=res, droprate=droprate, shortcut_droprate=shortcut_droprate, no_shortcut=no_shortcut, multiscale_out=multiscale_out, sigmoid=sigmoid, drop_func=drop_func)
         '''self.fpn = FeaturePyramidNetwork(
             in_channels_list=in_channels_list,
             out_channels=out_channels,
@@ -187,7 +204,7 @@ class UnetWithBackbone(nn.Module):
         )'''
         self.out_channels = out_channels
 
-    def _get_channel_scale_info(self):
+    def _get_channel_scale_info(self, one_by_one_latent=False, input_size=384):
         ch_list = []
         sc_list = []
         
@@ -196,7 +213,7 @@ class UnetWithBackbone(nn.Module):
         
         with torch.no_grad():
             for p in self.encoder.parameters():
-                dummy = torch.zeros((1,p.shape[1],128,128))
+                dummy = torch.zeros((1, p.shape[1], input_size, input_size))
                 #print('dummy', dummy.shape)
                 break
             feats = self.encoder(dummy)
@@ -204,11 +221,14 @@ class UnetWithBackbone(nn.Module):
             #    print(feats[key].shape)
             feats = list(feats.values())[::-1]
             for idx in range(len(feats)):
-                #print(feats[idx].shape)
+                print(feats[idx].shape)
                 ch_list.append(feats[idx].shape[1])
-                if idx > 0:
+                if idx == 1 and one_by_one_latent:
+                    sc_list.append(feats[idx-1].shape[2] * feats[idx].shape[2] // feats[idx-1].shape[2])
+                elif idx > 0:
                     sc_list.append(feats[idx].shape[2]//feats[idx-1].shape[2])
-            sc_list.append(128//feats[-1].shape[2])
+            
+            sc_list.append(input_size//feats[-1].shape[2])
         
         if training_state:
             self.train()
@@ -219,9 +239,11 @@ class UnetWithBackbone(nn.Module):
     #@torch.compile
     def forward(self, x):
         enc = self.encoder(x)
+        enc = list(enc.values())
+        enc[-1] = self.act(self.latent_pooling(enc[-1]))  # apply pooling to the last feature map if needed
         dec = self.decoder(enc)
         if self.classifier_out:
-            embedding = list(enc.values())[-1]
+            embedding = enc[-1]
             return self.classifier(embedding), dec
         return dec
     
